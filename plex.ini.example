@@ -1,0 +1,19 @@
+# Optional settings. Copy to plex.ini; it is copied to the console next to default.xex.
+# Sign-in happens on the console (plex.tv/link code) and is saved there in auth.ini.
+
+# Which connection to use: auto (home network, then internet, then Plex Relay),
+# local, remote, or relay. Use remote to test the away-from-home path while at home.
+connection=auto
+
+# Server name to use if the account has several (empty = the first one you own).
+servername=
+
+# Playback (defaults shown). Direct play needs H.264/MPEG-4 at most 'directmax' tall and at most
+# 'kbps'; anything else is converted by Plex to 'quality' at 'kbps'.
+#threads=4
+#directmax=720
+#quality=720
+#kbps=3500
+
+# Debugging: send log lines to the PC running tools\loglisten.ps1
+#logto=192.168.1.10:5555

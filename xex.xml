@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- Build options for imagexex. The title ID ("MX" + 0360) identifies the app to the
+     console: without one the system treats it like the dashboard, and the Guide's
+     "Xbox Home" does nothing. -->
+<xex>
+  <titleid id="0x4D580360"/>
+</xex>

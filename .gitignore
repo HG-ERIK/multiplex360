@@ -1,0 +1,27 @@
+build/
+external/AtgFramework/Debug/
+external/AtgFramework/Release/
+*.user
+*.suo
+*.sdf
+*.opensdf
+ipch/
+screenshots/
+plexlog.txt
+# Contains the Plex token
+plex.ini
+
+# FFmpeg library build output
+external/ffmpeg360/vcproj/**/Xbox 360/
+external/ffmpeg360/vcproj/**/Win32/
+*.idb
+*.obj
+*.tlog
+
+
+# Visual Studio build output anywhere
+**/Release/
+**/Debug/
+*.pdb
+*.lastbuildstate
+*.cache
