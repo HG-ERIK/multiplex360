@@ -23,6 +23,8 @@ many pixels at once instead of one by one.
    and enter it.
 5. Pick your profile if your account has more than one. Done.
 
+Works with DashLaunch liveblock on: no Xbox Live or stealth server needed.
+
 The app only writes inside its own folder. To sign out, use Settings or delete `auth.ini`.
 
 ## Controls
