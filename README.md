@@ -2,8 +2,11 @@
 
 An unofficial Plex client for RGH/JTAG Xbox 360 consoles.
 
-The name comes from how it plays video: decoding runs on four of the Xbox 360's six hardware
-threads at once, which is what makes direct playback smooth (and a multiplex is a cinema).
+The name comes from how it decodes video. The H.264 decoder is spread across four of the
+Xbox 360's six hardware threads with its own lightweight threading layer, and the heaviest work
+runs on VMX128, the vector unit of the 360's CPU, which handles 16 pixels in a single instruction
+instead of one at a time. The VMX code is checked against the plain C version at startup and only
+used when the results match exactly.
 
 ![Home screen](docs/home.png)
 
