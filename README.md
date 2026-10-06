@@ -12,16 +12,18 @@ An unofficial Plex client for RGH/JTAG Xbox 360 consoles.
 
 ## Install
 
-Download the zip from Releases, copy the `Multiplex360` folder anywhere on the console and
-start `default.xex` from Aurora or another homebrew dashboard. The app only writes inside its
-own folder.
+1. Download `Multiplex360-x.y.zip` from [Releases](../../releases) and unzip it.
+2. Copy the `Multiplex360` folder to your console (HDD or USB), with FTP or a USB stick.
+3. Start `default.xex` from Aurora, FreeStyle or any dashboard that runs homebrew.
+4. A code appears on screen. Go to [plex.tv/link](https://plex.tv/link) on your phone or PC
+   and enter it.
+5. Pick your profile if your account has more than one. Done.
+
+The app only writes inside its own folder. To sign out, use Settings or delete `auth.ini`.
 
 ## Controls
 
-| | |
-|---|---|
-| Browsing | D-pad / stick, A open, B back, Left opens the sidebar |
-| Player | A pause, Left/Right seek (hold to go faster), Up timeline, Y options, B back |
+![Controller layout](docs/controls.svg)
 
 ## Building
 

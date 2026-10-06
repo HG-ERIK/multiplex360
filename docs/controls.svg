@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="1280" height="720" rx="18" fill="#f6f8fa"/>
+  <text x="640" y="58" text-anchor="middle" font-size="34" font-weight="700" fill="#1f2328">Multiplex 360 controls</text>
+  <text x="640" y="90" text-anchor="middle" font-size="18" fill="#57606a">menus · <tspan fill="#c4610b" font-weight="600">while watching</tspan></text>
+
+  <!-- triggers and bumpers -->
+  <path d="M452 196 q0 -30 30 -32 h40 q30 2 30 32 v18 h-100 z" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <path d="M728 196 q0 -30 30 -32 h40 q30 2 30 32 v18 h-100 z" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <rect x="420" y="214" width="170" height="30" rx="14" fill="#c4cbd3" stroke="#8c959f" stroke-width="2"/>
+  <rect x="690" y="214" width="170" height="30" rx="14" fill="#c4cbd3" stroke="#8c959f" stroke-width="2"/>
+  <text x="502" y="198" text-anchor="middle" font-size="15" font-weight="700" fill="#57606a">LT</text>
+  <text x="778" y="198" text-anchor="middle" font-size="15" font-weight="700" fill="#57606a">RT</text>
+  <text x="505" y="235" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2328">LB</text>
+  <text x="775" y="235" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2328">RB</text>
+
+  <!-- body -->
+  <path d="M430 246 C480 226 800 226 850 246 C925 280 975 410 990 515 C1002 605 930 648 878 606 C840 575 812 530 772 512 L508 512 C468 530 440 575 402 606 C350 648 278 605 290 515 C305 410 355 280 430 246 Z"
+        fill="#ffffff" stroke="#8c959f" stroke-width="3"/>
+
+  <!-- left stick -->
+  <circle cx="500" cy="340" r="44" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <circle cx="500" cy="340" r="30" fill="#57606a"/>
+  <!-- d-pad -->
+  <g transform="translate(570 448)">
+    <circle r="46" fill="#eaeef2" stroke="#8c959f" stroke-width="2"/>
+    <path d="M-12 -36 h24 v24 h24 v24 h-24 v24 h-24 v-24 h-24 v-24 h24 z" fill="#57606a"/>
+  </g>
+  <!-- right stick -->
+  <circle cx="712" cy="448" r="44" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <circle cx="712" cy="448" r="30" fill="#57606a"/>
+  <!-- back / guide / start -->
+  <rect x="574" y="322" width="30" height="18" rx="9" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <rect x="676" y="322" width="30" height="18" rx="9" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <circle cx="640" cy="331" r="22" fill="#d0d7de" stroke="#8c959f" stroke-width="2"/>
+  <!-- face buttons -->
+  <circle cx="790" cy="294" r="21" fill="#e3b20b"/><text x="790" y="301" text-anchor="middle" font-size="19" font-weight="700" fill="#fff">Y</text>
+  <circle cx="744" cy="340" r="21" fill="#2f6fd1"/><text x="744" y="347" text-anchor="middle" font-size="19" font-weight="700" fill="#fff">X</text>
+  <circle cx="836" cy="340" r="21" fill="#d1352b"/><text x="836" y="347" text-anchor="middle" font-size="19" font-weight="700" fill="#fff">B</text>
+  <circle cx="790" cy="386" r="21" fill="#3f9b3a"/><text x="790" y="393" text-anchor="middle" font-size="19" font-weight="700" fill="#fff">A</text>
+
+  <!-- callout lines -->
+  <g stroke="#c4610b" stroke-width="2" fill="none">
+    <polyline points="330,230 420,230"/>
+    <polyline points="330,330 456,336"/>
+    <polyline points="330,432 589,340"/>
+    <polyline points="330,560 524,470"/>
+    <polyline points="950,230 860,230"/>
+    <polyline points="950,294 811,294"/>
+    <polyline points="950,362 765,346"/>
+    <polyline points="950,430 857,345"/>
+    <polyline points="950,498 811,389"/>
+    <polyline points="950,566 706,333"/>
+  </g>
+
+  <!-- left labels -->
+  <g text-anchor="end">
+    <text x="322" y="226" font-size="21" font-weight="700" fill="#1f2328">LB</text>
+    <text x="322" y="248" font-size="16" fill="#c4610b">Back 5 minutes</text>
+
+    <text x="322" y="318" font-size="21" font-weight="700" fill="#1f2328">Left stick</text>
+    <text x="322" y="340" font-size="16" fill="#57606a">Move around</text>
+    <text x="322" y="360" font-size="16" fill="#c4610b">Same as the D-pad</text>
+
+    <text x="322" y="424" font-size="21" font-weight="700" fill="#1f2328">Back</text>
+    <text x="322" y="446" font-size="16" fill="#57606a">Exit to the dashboard</text>
+
+    <text x="322" y="532" font-size="21" font-weight="700" fill="#1f2328">D-pad</text>
+    <text x="322" y="554" font-size="16" fill="#57606a">Move · Left opens the sidebar</text>
+    <text x="322" y="574" font-size="16" fill="#c4610b">Left / Right seek (hold = faster)</text>
+    <text x="322" y="594" font-size="16" fill="#c4610b">Up show / hide timeline</text>
+  </g>
+
+  <!-- right labels -->
+  <g text-anchor="start">
+    <text x="958" y="226" font-size="21" font-weight="700" fill="#1f2328">RB</text>
+    <text x="958" y="248" font-size="16" fill="#c4610b">Forward 5 minutes</text>
+
+    <text x="958" y="290" font-size="21" font-weight="700" fill="#1f2328">Y</text>
+    <text x="984" y="290" font-size="16" fill="#57606a">Reload</text>
+    <text x="958" y="311" font-size="16" fill="#c4610b">Options: quality, audio, subtitles</text>
+
+    <text x="958" y="368" font-size="21" font-weight="700" fill="#1f2328">X</text>
+    <text x="984" y="368" font-size="16" fill="#57606a">Play episode from the start</text>
+
+    <text x="958" y="436" font-size="21" font-weight="700" fill="#1f2328">B</text>
+    <text x="984" y="436" font-size="16" fill="#57606a">Back</text>
+    <text x="958" y="457" font-size="16" fill="#c4610b">Hide timeline, then stop</text>
+
+    <text x="958" y="504" font-size="21" font-weight="700" fill="#1f2328">A</text>
+    <text x="984" y="504" font-size="16" fill="#57606a">Open / play</text>
+    <text x="958" y="525" font-size="16" fill="#c4610b">Pause · jump to the chosen spot</text>
+
+    <text x="958" y="572" font-size="21" font-weight="700" fill="#1f2328">Start</text>
+    <text x="958" y="593" font-size="16" fill="#c4610b">Pause / play</text>
+  </g>
+
+  <text x="640" y="690" text-anchor="middle" font-size="15" fill="#8c959f">LT, RT and the right stick are not used.</text>
+</svg>
