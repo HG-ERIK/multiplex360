@@ -2,6 +2,9 @@
 
 An unofficial Plex client for RGH/JTAG Xbox 360 consoles.
 
+The name comes from how it plays video: decoding runs on four of the Xbox 360's six hardware
+threads at once, which is what makes direct playback smooth (and a multiplex is a cinema).
+
 ![Home screen](docs/home.png)
 
 - Sign in with a plex.tv/link code, Plex Home profiles
