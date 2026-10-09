@@ -12,6 +12,7 @@ namespace
     IDirect3DPixelShader9*       g_ps = NULL;
     IDirect3DVertexDeclaration9* g_decl = NULL;
     float                        g_screenW = 1280, g_screenH = 720;
+    float                        g_squeeze = 1.0f;     // 0.75 on a 4:3 TV, which squeezes our 16:9 picture
 
     // Half-pixel shift keeps glyphs on the pixel grid.
     const char* VS =
@@ -66,6 +67,10 @@ namespace
 void Font::Startup( IDirect3DDevice9* device )
 {
     g_device = device;
+    // A 4:3 TV shows the 1280x720 picture squeezed sideways; draw letters narrower so they look normal.
+    XVIDEO_MODE video;
+    XGetVideoMode( &video );
+    g_squeeze = video.fIsWideScreen ? 1.0f : 0.75f;
     D3DDISPLAYMODE mode;
     if( SUCCEEDED( device->GetDisplayMode( 0, &mode ) ) && mode.Width > 0 )
     {
@@ -88,7 +93,7 @@ void Font::Startup( IDirect3DDevice9* device )
 
 Font::Font()
     : m_texture( NULL ), m_glyphs( NULL ), m_translator( NULL ), m_maxChar( 0 ), m_cellHeight( 0 ), m_lineAdvance( 0 ),
-      m_texW( 1 ), m_texH( 1 ), m_scaleX( 1 ), m_scaleY( 1 ), m_beginCount( 0 )
+      m_texW( 1 ), m_texH( 1 ), m_scaleX( g_squeeze ), m_scaleY( 1 ), m_beginCount( 0 )
 {
     SetWindow( 0, 0, (LONG)g_screenW, (LONG)g_screenH );
 }
@@ -109,8 +114,15 @@ void Font::SetWindow( LONG x1, LONG y1, LONG x2, LONG y2 )
     m_window.y2 = y2;
 }
 
+void Font::SetScaleFactors( float x, float y )
+{
+    m_scaleX = x * g_squeeze;
+    m_scaleY = y;
+}
+
 HRESULT Font::Create( const char* path )
 {
+    m_scaleX = g_squeeze;
     if( !g_device || !g_vs || !g_ps || !g_decl )
         return E_FAIL;
     FILE* f = fopen( path, "rb" );
@@ -288,6 +300,7 @@ void Font::DrawText( float x, float y, DWORD color, const wchar_t* text, DWORD f
     float invW = 1.0f / m_texW, invH = 1.0f / m_texH;
 
     Apply();
+    float limit = originX + maxWidth;       // where truncated text must end
     int quads = 0, dotsLeft = 0;
     bool lineStart = true;
     for( ;; )
@@ -305,7 +318,10 @@ void Font::DrawText( float x, float y, DWORD color, const wchar_t* text, DWORD f
                 {
                     float w, lh;
                     GetTextExtent( text, &w, &lh, TRUE );
+                    if( ( flags & FONT_TRUNCATED ) && w > maxWidth )
+                        w = maxWidth;
                     cursorX = floorf( ( flags & FONT_RIGHT ) ? originX - w : originX - w * 0.5f );
+                    limit = cursorX + maxWidth;
                 }
                 lineStart = false;
             }
@@ -323,7 +339,7 @@ void Font::DrawText( float x, float y, DWORD color, const wchar_t* text, DWORD f
 
         const Glyph& gl = GlyphFor( c );
         float offset = m_scaleX * gl.offset, width = m_scaleX * gl.width;
-        if( !dotsLeft && ( flags & FONT_TRUNCATED ) && cursorX + offset + width + dotsWidth > originX + maxWidth )
+        if( !dotsLeft && ( flags & FONT_TRUNCATED ) && cursorX + offset + width + dotsWidth > limit )
         {
             dotsLeft = 3;       // no room for this letter and "...": end with the dots
             continue;

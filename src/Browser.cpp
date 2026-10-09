@@ -96,6 +96,7 @@ void UserSettings::Load( const char* path )
         else if( k == "directmax" )  directMax = value;
         else if( k == "stats" )      stats = value != 0;
         else if( k == "brightness" ) brightness = value;
+        else if( k == "aspect" )     aspect = value;
     }
     fclose( f );
     int preset = NearestQualityPreset( quality, kbps );
@@ -108,8 +109,8 @@ void UserSettings::Save( const char* path ) const
     FILE* f = fopen( path, "wb" );
     if( !f )
         return;
-    fprintf( f, "quality=%d\r\nkbps=%d\r\ndirectmax=%d\r\nstats=%d\r\nbrightness=%d\r\n", quality, kbps, directMax,
-             stats ? 1 : 0, brightness );
+    fprintf( f, "quality=%d\r\nkbps=%d\r\ndirectmax=%d\r\nstats=%d\r\nbrightness=%d\r\naspect=%d\r\n", quality, kbps,
+             directMax, stats ? 1 : 0, brightness, aspect );
     fclose( f );
 }
 

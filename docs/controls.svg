@@ -81,6 +81,7 @@
 
     <text x="958" y="368" font-size="21" font-weight="700" fill="#1f2328">X</text>
     <text x="984" y="368" font-size="16" fill="#57606a">Play episode from the start</text>
+    <text x="958" y="391" font-size="16" fill="#c4610b">Aspect ratio (Auto, Zoom, Stretch...)</text>
 
     <text x="958" y="436" font-size="21" font-weight="700" fill="#1f2328">B</text>
     <text x="984" y="436" font-size="16" fill="#57606a">Back</text>

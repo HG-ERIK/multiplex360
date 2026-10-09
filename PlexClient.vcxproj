@@ -104,6 +104,7 @@
     <ClCompile Include="src\Guard.cpp" />
     <ClCompile Include="src\App.cpp" />
     <ClCompile Include="src\Font.cpp" />
+    <ClCompile Include="src\PlayerScreen.cpp" />
     <ClCompile Include="src\ImageCache.cpp" />
     <ClCompile Include="src\CpuMeter.cpp" />
     <ClCompile Include="src\Config.cpp" />
@@ -125,6 +126,7 @@
     <ClInclude Include="src\Guard.h" />
     <ClInclude Include="src\App.h" />
     <ClInclude Include="src\Font.h" />
+    <ClInclude Include="src\PlayerScreen.h" />
     <ClInclude Include="src\Quality.h" />
     <ClInclude Include="src\ImageCache.h" />
     <ClInclude Include="src\CpuMeter.h" />

@@ -30,7 +30,7 @@ public:
     float GetTextWidth( const wchar_t* text ) const;
     float GetFontHeight() const { return (float)m_lineAdvance; }     // line spacing, unscaled
 
-    void  SetScaleFactors( float x, float y ) { m_scaleX = x; m_scaleY = y; }
+    void  SetScaleFactors( float x, float y );     // x is narrowed further on a 4:3 TV
     void  SetWindow( const D3DRECT& rc ) { m_window = rc; }
     void  SetWindow( LONG x1, LONG y1, LONG x2, LONG y2 );
     void  GetWindow( D3DRECT& rc ) const { rc = m_window; }

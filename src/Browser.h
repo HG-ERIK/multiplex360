@@ -18,8 +18,9 @@ struct UserSettings
     int  directMax;     // tallest file played without conversion
     bool stats;         // stats-for-nerds overlay during playback
     int  brightness;    // -5..+10, steps of 0.02 added to the picture
+    int  aspect;        // FFPlayer::ASPECT_*
 
-    UserSettings() : quality( 720 ), kbps( 4000 ), directMax( 720 ), stats( false ), brightness( 0 ) {}
+    UserSettings() : quality( 720 ), kbps( 4000 ), directMax( 720 ), stats( false ), brightness( 0 ), aspect( 0 ) {}
     void Load( const char* path );
     void Save( const char* path ) const;
 };

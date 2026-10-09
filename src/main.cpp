@@ -24,6 +24,7 @@
 #include "CpuMeter.h"
 #include "Guard.h"
 #include "Quality.h"
+#include "PlayerScreen.h"
 
 namespace
 {
@@ -35,7 +36,6 @@ namespace
     const DWORD COLOR_TEXT       = 0xffeeeeee;
     const DWORD COLOR_DIM        = 0xff8a8a8a;
     const DWORD COLOR_ERROR      = 0xffff6060;
-    const DWORD COLOR_SELECTED   = 0xff3a3a3a;
 
 
     const DWORD PING_TIMEOUT_MS  = 4000;
@@ -82,18 +82,13 @@ namespace
     }
 }
 
-class PlexApp : public App
+class PlexApp : public App, public PlayerHost
 {
 public:
     PlexApp() : m_client( NULL ), m_sessionReady( false ), m_timelineTick( 0 ), m_lastPosition( 0 ),
-                m_restarting( false ), m_startGeneration( 0 ), m_prevStick( 0 ),
-                m_menuOpen( false ), m_menuPage( PAGE_MAIN ), m_menuSel( 0 ), m_menuHeight( 720 ),
-                m_qualityMode( QUALITY_AUTO ), m_qualityPreset( 1 ), m_burnSubs( false ),
-                m_statsTick( 0 ), m_statsShown( 0 ), m_statsBytes( 0 ), m_displayFps( 0 ), m_mbps( 0 ), m_frameStart( 0 ),
-                m_renderMs( 0 ), m_thread( NULL ), m_notify( NULL ), m_busy( false ),
-                m_transcoding( false ), m_osdTick( 0 ), m_osdHidden( false ),
-                m_seekPending( false ), m_seekTarget( 0 ), m_seekIdleTick( 0 ), m_holdDir( 0 ), m_holdStart( 0 ),
-                m_holdLastTick( 0 ) {}
+                m_transcoding( false ), m_restarting( false ), m_reconnects( 0 ), m_startGeneration( 0 ), m_menuHeight( 720 ),
+                m_qualityMode( QUALITY_AUTO ), m_qualityPreset( 1 ), m_burnSubs( false ), m_frameStart( 0 ),
+                m_renderMs( 0 ), m_thread( NULL ), m_notify( NULL ), m_busy( false ) {}
 
 private:
     virtual HRESULT Initialize();
@@ -115,8 +110,8 @@ private:
 
     void         RenderSignIn( const std::string& code, const D3DRECT& safe );
 
-    Font          m_font;
-    Font          m_titleFont;
+    Font               m_font;
+    Font               m_titleFont;
     Config             m_cfg;
     AuthStore          m_auth;
     Plex::Client*      m_client;
@@ -145,67 +140,59 @@ private:
     Job                m_job;
 
     FFPlayer           m_player;
+    PlayerScreen       m_screen;
+    CpuMeter           m_cpu;
     std::string        m_lanBase;      // http://<LAN ip>:port of the server, if it has one
 
     void         StartPlayback( const std::string& key, const Plex::Media& media, double offset );
     void         StopPlayback();
+    void         UpdatePlayer( Pad* pad );
 
     // What is playing, so a transcode can be restarted at a new time for seeking.
     std::string        m_playKey;
     Plex::Media        m_playMedia;
+    std::wstring       m_playTitle;
     bool               m_transcoding;
     std::string        m_session;
-
-    std::wstring       m_playTitle;
-    DWORD              m_osdTick;       // last input; the bar hides 4 s after it
-    bool               m_osdHidden;     // hidden on purpose (Up/Down/B), even while paused
-    bool               m_seekPending;   // a target time is being chosen
-    double             m_seekTarget;
-    DWORD              m_seekIdleTick;  // when the last tap/hold ended
-    int                m_holdDir;       // -1/+1 while Left/Right is held
-    DWORD              m_holdStart;
-    DWORD              m_holdLastTick;
-    void         UpdatePlayer( Pad* pad );
-    void         CommitSeek();
 
     // While the stream (re)starts the player screen stays up with a message.
     void         RestartPlayback( double position, bool selectStreams, const std::wstring& message );
     bool               m_restarting;
+    int                m_reconnects;        // automatic restarts after a lost connection, this video
     int                m_startGeneration;   // bumps on every start/cancel; stale callbacks see a different value
     std::wstring       m_restartMessage;
-    WORD               m_prevStick;         // left stick as D-pad directions, last frame
 
-    // Options menu (Y during playback).
-    enum MenuPage { PAGE_MAIN, PAGE_QUALITY, PAGE_BITRATE, PAGE_AUDIO, PAGE_SUBS, PAGE_BRIGHTNESS };
-    enum { ROW_QUALITY, ROW_AUDIO, ROW_SUBS, ROW_BRIGHTNESS, ROW_STATS, ROW_COUNT };
+    // PlayerHost
+    virtual void         Seek( double seconds );
+    virtual void         Leave();
+    virtual void         CancelStart();
+    virtual bool         SlowSeek() const { return m_transcoding; }
+    virtual double       DurationHint() const { return m_playMedia.duration; }
+    virtual std::wstring Title() const { return m_playTitle; }
+    virtual std::wstring StartMessage() const { return m_restartMessage; }
+    virtual std::wstring Tag() const;
+    virtual IDirect3DTexture9* Preview( double seconds );
+    virtual bool         ShowStats() const { return m_settings.stats; }
+    virtual std::wstring StatsMode() const;
+    virtual int          Brightness() const { return m_settings.brightness; }
+    virtual void         BuildMenu( int page, MenuPage& out );
+    virtual MenuMove     Choose( int page, int sel );
+    virtual MenuMove     Back( int page );
+    virtual void         SliderStep( int page, int step );
+    virtual void         AspectChanged();
+
+    // Options menu pages.
+    enum { PAGE_MAIN, PAGE_QUALITY, PAGE_BITRATE, PAGE_AUDIO, PAGE_SUBS, PAGE_BRIGHTNESS, PAGE_ASPECT };
+    enum { ROW_QUALITY, ROW_AUDIO, ROW_SUBS, ROW_BRIGHTNESS, ROW_ASPECT, ROW_STATS };
     enum { QUALITY_AUTO, QUALITY_ORIGINAL, QUALITY_PRESET };
-    struct MenuEntry
-    {
-        std::wstring label, value;
-        bool         checked, opens;     // opens: leads to another list
-    };
-    void         UpdateMenu( WORD pressed );
-    void         RenderMenu();
-    void         RenderStats();
-    void         OpenMenuPage( int page, int sel );
-    void         MenuEntries( std::vector<MenuEntry>& out, std::wstring& title ) const;
-    void         ChooseMenuEntry();
     std::vector<int> TrackList( int streamType ) const;   // indexes into m_playMedia.streams; -1 = subtitles off
     std::wstring TrackName( int streamType ) const;
     std::wstring QualityName() const;
-    CpuMeter           m_cpu;
-    bool               m_menuOpen;
-    int                m_menuPage;
-    int                m_menuSel;
     int                m_menuHeight;        // resolution whose bitrates PAGE_BITRATE lists
     int                m_qualityMode;       // QUALITY_*: this video's choice (resets per video)
     int                m_qualityPreset;     // QUALITY_PRESETS index when QUALITY_PRESET
     bool               m_burnSubs;
-    DWORD              m_statsTick;
-    long               m_statsShown;
-    __int64            m_statsBytes;
-    float              m_displayFps;
-    float              m_mbps;
+
     DWORD              m_frameStart;
     float              m_renderMs;
     void         RenderPlayer( const D3DRECT& safe );
@@ -256,6 +243,7 @@ HRESULT PlexApp::Initialize()
     }
     m_font.SetWindow( SafeArea() );
     m_titleFont.SetWindow( SafeArea() );
+    m_screen.Init( &m_player, &m_font, &m_titleFont, &m_cpu, this, COLOR_ACCENT );
 
     m_cfg.Load( "game:\\plex.ini" );
     Log::Write( "Connection mode: %s", m_cfg.connection.c_str() );
@@ -635,6 +623,15 @@ HRESULT PlexApp::Update()
     if( !m_playKey.empty() )
     {
         // Playback ended (finished, stopped or failed).
+        if( m_player.Failed() && m_player.Error() == "Connection lost" && m_reconnects < 5 )
+        {
+            // The player's own reconnecting gave up (~20 s); start the stream again from there.
+            double pos = m_player.Position();
+            ++m_reconnects;
+            Log::Write( "Connection lost at %.1f s, restarting (%d)", pos, m_reconnects );
+            RestartPlayback( pos, false, L"Connection lost, reconnecting..." );
+            return S_OK;
+        }
         if( m_player.Failed() )
         {
             Log::Write( "Playback gave up: %s", m_player.Error().c_str() );
@@ -794,9 +791,7 @@ void PlexApp::StartPlayback( const std::string& key, const Plex::Media& media, d
     m_playKey = key;
     m_playMedia = media;
     m_playTitle = media.title;
-    m_seekPending = false;
-    m_holdDir = 0;
-    m_osdTick = GetTickCount();
+    m_screen.Reset();
     std::vector<std::string> urls;
     std::vector<std::wstring> labels;
 
@@ -817,8 +812,8 @@ void PlexApp::StartPlayback( const std::string& key, const Plex::Media& media, d
     }
     Log::Write( "Playback decision: %s (quality mode %d, burn subtitles %d, server %ls)",
                 m_transcoding ? "transcode" : "direct", m_qualityMode, m_burnSubs ? 1 : 0, m_serverLabel.c_str() );
-    m_menuOpen = false;
     m_player.SetBrightness( m_settings.brightness * 0.02f );
+    m_player.SetAspect( m_settings.aspect );
     m_timelineTick = GetTickCount();
     if( !m_transcoding )
     {
@@ -899,7 +894,6 @@ void PlexApp::RestartPlayback( double position, bool selectStreams, const std::w
 {
     m_restartMessage = message;
     m_restarting = true;
-    m_menuOpen = false;
     m_player.Stop();
     if( !selectStreams )
     {
@@ -932,6 +926,7 @@ void PlexApp::PlayItem( const Plex::Item& item, double start )
         return;
     m_job.offset = start;
     m_qualityMode = QUALITY_AUTO;    // per-video choice from the options menu
+    m_reconnects = 0;
     StartJob( Job::MEDIA, "/library/metadata/" + item.ratingKey, item.title );
 }
 
@@ -950,6 +945,7 @@ void PlexApp::ReportTimeline( const char* state )
 void PlexApp::ApplySettings()
 {
     m_player.SetBrightness( m_settings.brightness * 0.02f );
+    m_player.SetAspect( m_settings.aspect );
 }
 
 void PlexApp::SignOut()
@@ -979,36 +975,58 @@ void PlexApp::SwitchUser( const std::string& token, const std::wstring& name )
 }
 
 
-namespace
+//--------------------------------------------------------------------------------------
+// Player screen (PlayerScreen does the timeline, seeking and menu; these are the Plex parts)
+//--------------------------------------------------------------------------------------
+void PlexApp::Seek( double target )
 {
-    const DWORD OSD_HIDE_MS     = 4000;
-    const DWORD HOLD_MS         = 400;    // Left/Right held longer than this scrubs
-    const DWORD SEEK_COMMIT_MS  = 700;    // taps add up; the jump happens after this pause
-    const int   TAP_SECONDS     = 10;
-
-    std::wstring FormatTime( double s )
-    {
-        if( s < 0 )
-            s = 0;
-        unsigned t = (unsigned)s;
-        wchar_t buf[32];
-        if( t >= 3600 )
-            swprintf_s( buf, L"%u:%02u:%02u", t / 3600, ( t / 60 ) % 60, t % 60 );
-        else
-            swprintf_s( buf, L"%u:%02u", t / 60, t % 60 );
-        return buf;
-    }
-}
-
-void PlexApp::CommitSeek()
-{
-    m_seekPending = false;
-    double target = m_seekTarget;
-    Log::Write( "Seek to %.0f s (from %.0f s)", target, m_player.Position() );
     if( !m_transcoding )
         m_player.SeekAbsolute( target );
     else
         RestartPlayback( target, false, L"Jumping to " + FormatTime( target ) );   // a live transcode restarts there
+}
+
+void PlexApp::Leave()
+{
+    StopPlayback();
+}
+
+void PlexApp::CancelStart()
+{
+    m_restarting = false;
+    ++m_startGeneration;
+}
+
+std::wstring PlexApp::Tag() const
+{
+    if( !m_transcoding )
+        return L"Original";
+    int h = m_settings.quality, k = m_settings.kbps;
+    if( m_qualityMode == QUALITY_PRESET )
+    {
+        h = QUALITY_PRESETS[m_qualityPreset].height;
+        k = QUALITY_PRESETS[m_qualityPreset].kbps;
+    }
+    wchar_t buf[48];
+    swprintf_s( buf, L"%dp  %g Mbps%s", h, k / 1000.0, m_burnSubs ? L"  (subtitles)" : L"" );
+    return buf;
+}
+
+IDirect3DTexture9* PlexApp::Preview( double seconds )
+{
+    if( !m_playMedia.hasPreviews || m_playMedia.partId.empty() )
+        return NULL;
+    char path[96];
+    sprintf_s( path, "/library/parts/%s/indexes/sd/%u", m_playMedia.partId.c_str(), (unsigned)( seconds / 10 ) * 10000u );
+    m_images.Pump();
+    return m_images.Get( path, 320, 180 );
+}
+
+std::wstring PlexApp::StatsMode() const
+{
+    wchar_t buf[64];
+    swprintf_s( buf, L"%d decode threads   %s", m_cfg.threads, m_transcoding ? L"server transcoding" : L"direct play" );
+    return buf;
 }
 
 void PlexApp::UpdatePlayer( Pad* pad )
@@ -1034,14 +1052,6 @@ void PlexApp::UpdatePlayer( Pad* pad )
             Log::Write( "BENCHMARK %s speed: %.1f decoded fps over %.0f s (%ld frames, %.1f MB)", m_cfg.autoplay.c_str(),
                         ( st.decoded - s_benchFrom ) / secs, secs, st.decoded - s_benchFrom, st.bytesRead / 1048576.0 );
             m_player.SetSpeedTest( false );
-            double cabac, recon, filter, wait;
-            fg_profile( &cabac, &recon, &filter, &wait, 0 );
-            double work = recon - wait;
-            double total = cabac + work + filter;
-            Log::Write( "BENCHMARK split per frame: cabac %.1f ms (%.0f%%), reconstruction %.1f ms (%.0f%%), loop filter %.1f ms (%.0f%%); "
-                        "waiting for reference frames %.1f ms",
-                        cabac / st.decoded, 100 * cabac / total, work / st.decoded, 100 * work / total,
-                        filter / st.decoded, 100 * filter / total, wait / st.decoded );
             s_benchStart = 0;
             m_cfg.benchmark = 0;
             StopPlayback();
@@ -1061,10 +1071,9 @@ void PlexApp::UpdatePlayer( Pad* pad )
             FFPlayer::Stats st;
             m_player.GetStats( st );
             float secs = ( GetTickCount() - s_benchStart ) / 1000.0f;
-            Log::Write( "BENCHMARK %s: %.0f s, decoded %ld, shown %ld, dropped %ld, catch-ups %ld, %.1f MB, cpu %.0f/%.0f/%.0f/%.0f/%.0f/%.0f",
+            Log::Write( "BENCHMARK %s: %.0f s, decoded %ld, shown %ld, dropped %ld, catch-ups %ld, %.1f MB",
                         m_cfg.autoplay.c_str(), secs, st.decoded, st.shown, st.dropped, st.catchups,
-                        st.bytesRead / 1048576.0, m_cpu.Busy( 0 ) * 100, m_cpu.Busy( 1 ) * 100, m_cpu.Busy( 2 ) * 100,
-                        m_cpu.Busy( 3 ) * 100, m_cpu.Busy( 4 ) * 100, m_cpu.Busy( 5 ) * 100 );
+                        st.bytesRead / 1048576.0 );
             double cabac, recon, filter, wait;
             fg_profile( &cabac, &recon, &filter, &wait, 0 );
             double work = recon - wait;
@@ -1086,304 +1095,30 @@ void PlexApp::UpdatePlayer( Pad* pad )
         m_timelineTick = GetTickCount();
         ReportTimeline( m_player.IsPaused() ? "paused" : "playing" );
     }
-    // Left stick acts as the D-pad.
-    WORD stick = 0;
-    if( pad->sThumbLX > 16000 )  stick |= XINPUT_GAMEPAD_DPAD_RIGHT;
-    if( pad->sThumbLX < -16000 ) stick |= XINPUT_GAMEPAD_DPAD_LEFT;
-    if( pad->sThumbLY > 16000 )  stick |= XINPUT_GAMEPAD_DPAD_UP;
-    if( pad->sThumbLY < -16000 ) stick |= XINPUT_GAMEPAD_DPAD_DOWN;
-    WORD pressed = pad->wPressedButtons | ( stick & ~m_prevStick );
-    WORD held = pad->wButtons | stick;
-    m_prevStick = stick;
-    DWORD now = GetTickCount();
-
-    // While (re)starting only B (cancel) works.
-    if( !m_player.IsActive() )
-    {
-        if( pressed & XINPUT_GAMEPAD_B )
-        {
-            Log::Write( "Start cancelled" );
-            m_restarting = false;
-            ++m_startGeneration;
-        }
-        return;
-    }
 
     // testseek=N: seek N seconds every 12 s, three times.
     static int s_testSeeks = 0;
     static DWORD s_testTick = GetTickCount();
-    if( m_cfg.testSeek != 0 && s_testSeeks < 3 && now - s_testTick > 12000 )
+    if( m_player.IsActive() && m_cfg.testSeek != 0 && s_testSeeks < 3 && GetTickCount() - s_testTick > 12000 )
     {
-        s_testTick = now;
+        s_testTick = GetTickCount();
         ++s_testSeeks;
         Log::Write( "Test seek %d: %+d s", s_testSeeks, m_cfg.testSeek );
-        m_seekTarget = m_player.Position() + m_cfg.testSeek;
-        CommitSeek();
+        Seek( m_player.Position() + m_cfg.testSeek );
         return;
     }
+    if( m_cfg.testOsd && m_player.IsActive() )
+        m_screen.ShowFakeSeek( m_player.Position() + 754 );
 
-    if( m_settings.stats && !m_cpu.Running() )
-        m_cpu.Start();
-    else if( !m_settings.stats && m_cpu.Running() )
-        m_cpu.Stop();
-
-    if( m_menuOpen )
-    {
-        UpdateMenu( pressed );
-        m_osdTick = now;
-        return;
-    }
-    if( pressed & XINPUT_GAMEPAD_Y )
-    {
-        m_menuOpen = true;
-        m_seekPending = false;
-        m_holdDir = 0;
-        OpenMenuPage( PAGE_MAIN, 0 );
-        return;
-    }
-
-    // Up toggles the timeline, Down hides it, any other input shows it.
-    bool wasVisible = !m_osdHidden && ( now - m_osdTick < OSD_HIDE_MS || m_player.IsPaused() || m_seekPending );
-    bool hide = !m_seekPending && ( ( pressed & XINPUT_GAMEPAD_DPAD_DOWN ) ||
-                                    ( ( pressed & XINPUT_GAMEPAD_DPAD_UP ) && wasVisible ) );
-    if( hide )
-    {
-        m_osdTick = 0;
-        m_osdHidden = true;         // stays hidden even while paused, until the next input
-    }
-    else if( pressed || ( held & ( XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT ) ) )
-    {
-        m_osdTick = now;
-        m_osdHidden = false;
-    }
-    if( m_cfg.testOsd )
-    {
-        // testosd: keep the bar up with a fake seek target.
-        m_osdTick = now;
-        m_seekPending = true;
-        m_seekTarget = m_player.Position() + 754;
-        m_seekIdleTick = now;
-    }
-    // B: cancel the seek, else hide the timeline, else leave.
-    if( pressed & XINPUT_GAMEPAD_B )
-    {
-        if( m_seekPending )
-            m_seekPending = false;
-        else if( wasVisible )
-        {
-            m_osdTick = 0;
-            m_osdHidden = true;
-        }
-        else
-            StopPlayback();
-        return;
-    }
-    if( pressed & ( XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_START ) )
-    {
-        if( m_seekPending )
-        {
-            m_holdDir = 0;
-            CommitSeek();           // A jumps to the chosen spot right away
-            return;
-        }
-        m_player.TogglePause();
-    }
-
-    double duration = m_player.Duration() > 0 ? m_player.Duration() : m_playMedia.duration;
-
-    // Left/Right: tap = 10 s, hold = repeat. Seeks on release (or A).
-    int dir = 0;
-    if( pressed & XINPUT_GAMEPAD_DPAD_RIGHT ) dir = 1;
-    if( pressed & XINPUT_GAMEPAD_DPAD_LEFT )  dir = -1;
-    if( dir )
-    {
-        if( !m_seekPending )
-        {
-            m_seekPending = true;
-            m_seekTarget = m_player.Position();
-        }
-        m_seekTarget += dir * TAP_SECONDS;
-        m_holdDir = dir;
-        m_holdStart = m_holdLastTick = now;
-    }
-    if( m_holdDir )
-    {
-        WORD key = m_holdDir > 0 ? XINPUT_GAMEPAD_DPAD_RIGHT : XINPUT_GAMEPAD_DPAD_LEFT;
-        if( held & key )
-        {
-            // ~7 steps a second: 10 s, then 30 s after 2 s, 60 s after 4 s, more in long films.
-            DWORD heldFor = now - m_holdStart;
-            if( heldFor > HOLD_MS && now - m_holdLastTick >= 140 )
-            {
-                double step = heldFor < 2000 ? 10 : heldFor < 4000 ? 30 : 60;
-                if( heldFor >= 6000 && duration / 70 > step )
-                    step = duration / 70;
-                m_seekTarget += m_holdDir * step;
-                m_holdLastTick = now;
-            }
-        }
-        else
-        {
-            m_holdDir = 0;
-            m_seekIdleTick = now;
-        }
-    }
-    if( pressed & ( XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER ) )
-    {
-        if( !m_seekPending )
-        {
-            m_seekPending = true;
-            m_seekTarget = m_player.Position();
-        }
-        m_seekTarget += ( pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER ) ? 300 : -300;
-        m_seekIdleTick = now;
-    }
-
-    if( m_seekPending )
-    {
-        if( m_seekTarget < 0 )
-            m_seekTarget = 0;
-        if( duration > 0 && m_seekTarget > duration - 5 )
-            m_seekTarget = duration - 5;
-        // Each seek restarts a transcode, so let taps add up longer.
-        if( !m_holdDir && now - m_seekIdleTick > ( m_transcoding ? 1200u : SEEK_COMMIT_MS ) )
-            CommitSeek();
-    }
+    m_screen.Update( pad );
 }
-
 
 void PlexApp::RenderPlayer( const D3DRECT& safe )
 {
     m_pd3dDevice->Clear( 0, NULL, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0 );
     D3DRECT full = { 0, 0, (LONG)m_d3dpp.BackBufferWidth, (LONG)m_d3dpp.BackBufferHeight };
     m_player.RenderFrame( full );
-
-    DWORD now = GetTickCount();
-    if( !m_player.IsActive() )
-    {
-        float cx = (float)( safe.x2 - safe.x1 ) / 2;
-        static const wchar_t* const dots[4] = { L"", L".", L"..", L"..." };
-        m_titleFont.Begin();
-        m_titleFont.DrawText( cx, 300, COLOR_TEXT, m_playTitle.c_str(), FONT_CENTER_X | FONT_TRUNCATED,
-                              (float)( safe.x2 - safe.x1 ) - 40 );
-        m_titleFont.End();
-        std::wstring msg = m_restartMessage;
-        while( !msg.empty() && msg[msg.size() - 1] == L'.' )
-            msg.erase( msg.size() - 1 );
-        m_font.Begin();
-        m_font.DrawText( cx, 350, COLOR_ACCENT, ( msg + dots[( now / 400 ) % 4] ).c_str(), FONT_CENTER_X );
-        m_font.DrawText( cx, 400, COLOR_DIM, L"B  Cancel", FONT_CENTER_X );
-        m_font.End();
-        return;
-    }
-    if( m_settings.stats )
-        RenderStats();
-    if( m_menuOpen )
-    {
-        RenderMenu();
-        return;
-    }
-    bool buffering = m_player.IsBuffering();
-    bool visible = ( !m_osdHidden && ( now - m_osdTick < OSD_HIDE_MS || m_player.IsPaused() ) ) || m_seekPending || buffering;
-    if( !visible )
-        return;
-
-    float sw = (float)m_d3dpp.BackBufferWidth, sh = (float)m_d3dpp.BackBufferHeight;
-    float left = (float)safe.x1, right = (float)safe.x2, width = right - left;
-    float barY = (float)safe.y2 - 58.0f;
-
-    // Gradient behind the controls.
-    const float fadeTop = barY - 170.0f, fadeBottom = barY - 40.0f;
-    const int strips = 26;
-    for( int i = 0; i < strips; ++i )
-    {
-        float y0 = fadeTop + ( fadeBottom - fadeTop ) * i / strips;
-        float y1 = fadeTop + ( fadeBottom - fadeTop ) * ( i + 1 ) / strips;
-        DWORD alpha = (DWORD)( 180.0f * ( i + 1 ) / strips );
-        Draw::Rect( 0, y0, sw, y1, alpha << 24 );
-    }
-    Draw::Rect( 0, fadeBottom, sw, sh, 0xB4000000 );
-
-    double duration = m_player.Duration() > 0 ? m_player.Duration() : m_playMedia.duration;
-    double pos = m_player.Position();
-    double shown = m_seekPending ? m_seekTarget : pos;
-    float fPos = duration > 0 ? (float)( pos / duration ) : 0.0f;
-    float fShown = duration > 0 ? (float)( shown / duration ) : 0.0f;
-    if( fPos > 1 ) fPos = 1;
-    if( fShown > 1 ) fShown = 1;
-    Draw::Rect( left, barY, right, barY + 6, 0x60FFFFFF );
-    Draw::Rect( left, barY, left + width * fPos, barY + 6, COLOR_ACCENT );
-    if( m_seekPending )
-        Draw::Rect( left + width * min( fPos, fShown ), barY, left + width * max( fPos, fShown ), barY + 6,
-                    0xC0FFFFFF );
-    float knobX = left + width * fShown;
-    Draw::Rect( knobX - 8, barY - 5, knobX + 8, barY + 11, 0xFFFFFFFF );
-
-    // Preview thumbnail above the knob, if the server generated them.
-    if( m_seekPending && m_playMedia.hasPreviews && !m_playMedia.partId.empty() )
-    {
-        char path[96];
-        sprintf_s( path, "/library/parts/%s/indexes/sd/%u", m_playMedia.partId.c_str(),
-                   (unsigned)( m_seekTarget / 10 ) * 10000u );
-        m_images.Pump();
-        IDirect3DTexture9* thumb = m_images.Get( path, 320, 180 );
-        float px = knobX - 160;
-        if( px < left ) px = left;
-        if( px > right - 320 ) px = right - 320;
-        float py = barY - 290;
-        Draw::Rect( px - 3, py - 3, px + 323, py + 183, 0xFF000000 );
-        if( thumb )
-            Draw::Image( thumb, px, py, px + 320, py + 180 );
-        else
-            Draw::Rect( px, py, px + 320, py + 180, 0xFF202020 );
-        Draw::Frame( px - 3, py - 3, px + 323, py + 183, 2, 0xFFFFFFFF );
-    }
-
-    float ty = barY - safe.y1;
-    std::wstring tag = L"Original";
-    if( m_transcoding )
-    {
-        int h = m_settings.quality, k = m_settings.kbps;
-        if( m_qualityMode == QUALITY_PRESET )
-        {
-            h = QUALITY_PRESETS[m_qualityPreset].height;
-            k = QUALITY_PRESETS[m_qualityPreset].kbps;
-        }
-        wchar_t buf[32];
-        swprintf_s( buf, L"%dp  %g Mbps", h, k / 1000.0 );
-        tag = buf;
-        if( m_burnSubs )
-            tag += L"  (subtitles)";    // subtitles always need Plex to convert, even on Original
-    }
-    float tagW = 0, titleW = 0, th = 0;
-    m_font.GetTextExtent( tag.c_str(), &tagW, &th );
-    m_titleFont.GetTextExtent( m_playTitle.c_str(), &titleW, &th );
-    float titleMax = width - tagW - 40;
-    m_titleFont.Begin();
-    m_titleFont.DrawText( 0, ty - 80, COLOR_TEXT, m_playTitle.c_str(), titleW > titleMax ? FONT_TRUNCATED : 0, titleMax );
-    if( m_seekPending )
-    {
-        double delta = m_seekTarget - pos;
-        std::wstring label = FormatTime( m_seekTarget ) + L"   (" + ( delta >= 0 ? L"+" : L"-" ) +
-                             FormatTime( fabs( delta ) ) + L")";
-        float lx = knobX - left;
-        if( lx < 120 ) lx = 120;
-        if( lx > width - 120 ) lx = width - 120;
-        m_titleFont.DrawText( lx, ty - 40, COLOR_TEXT, label.c_str(), FONT_CENTER_X );
-    }
-    m_titleFont.End();
-
-    m_font.Begin();
-    m_font.DrawText( 0, ty + 14, COLOR_TEXT, FormatTime( pos ).c_str() );
-    m_font.DrawText( width, ty + 14, COLOR_DIM, FormatTime( duration ).c_str(), FONT_RIGHT );
-    std::wstring state = buffering ? L"Buffering..." : m_player.IsPaused() ? L"Paused" : L"";
-    if( !state.empty() )
-        m_font.DrawText( width / 2, ty + 14, COLOR_ACCENT, state.c_str(), FONT_CENTER_X );
-    m_font.DrawText( width, ty - 74, COLOR_DIM, tag.c_str(), FONT_RIGHT );
-    m_font.DrawText( 0, ty + 40, COLOR_DIM, m_seekPending ?
-                     L"Left/Right  Move (hold = faster)      A  Jump here      B  Cancel" :
-                     L"Left/Right  Seek      A  Pause      LB/RB  5 min      Down  Hide      Y  Options      B  Back" );
-    m_font.End();
+    m_screen.Render( safe, m_renderMs );
 }
 
 void PlexApp::EndFrame()
@@ -1401,7 +1136,7 @@ void PlexApp::EndFrame()
 }
 
 //--------------------------------------------------------------------------------------
-// Options menu and stats for nerds
+// Options menu
 //--------------------------------------------------------------------------------------
 std::wstring PlexApp::TrackName( int streamType ) const
 {
@@ -1438,39 +1173,33 @@ std::wstring PlexApp::QualityName() const
     return L"Auto";
 }
 
-void PlexApp::OpenMenuPage( int page, int sel )
+void PlexApp::BuildMenu( int page, MenuPage& out )
 {
-    m_menuPage = page;
-    m_menuSel = sel;
-}
-
-void PlexApp::MenuEntries( std::vector<MenuEntry>& out, std::wstring& title ) const
-{
-    out.clear();
     MenuEntry e;
-    e.checked = e.opens = false;
     wchar_t buf[48];
-    switch( m_menuPage )
+    switch( page )
     {
     case PAGE_MAIN:
-        title = L"Options";
+        out.title = L"Options";
         e.opens = true;
-        e.label = L"Quality";    e.value = QualityName();  out.push_back( e );
-        e.label = L"Audio";      e.value = TrackName( 2 ); out.push_back( e );
-        e.label = L"Subtitles";  e.value = TrackName( 3 ); out.push_back( e );
+        e.label = L"Quality";    e.value = QualityName();  out.entries.push_back( e );
+        e.label = L"Audio";      e.value = TrackName( 2 ); out.entries.push_back( e );
+        e.label = L"Subtitles";  e.value = TrackName( 3 ); out.entries.push_back( e );
         swprintf_s( buf, L"%+d", m_settings.brightness );
-        e.label = L"Brightness"; e.value = buf;            out.push_back( e );
+        e.label = L"Brightness"; e.value = buf;            out.entries.push_back( e );
+        e.label = L"Aspect ratio"; e.value = FFPlayer::AspectName( m_settings.aspect ); out.entries.push_back( e );
+        e.label = L"Aspect ratio"; e.value = FFPlayer::AspectName( m_settings.aspect ); out.entries.push_back( e );
         e.opens = false;
-        e.label = L"Stats for nerds"; e.value = m_settings.stats ? L"On" : L"Off"; out.push_back( e );
+        e.label = L"Stats for nerds"; e.value = m_settings.stats ? L"On" : L"Off"; out.entries.push_back( e );
         break;
 
     case PAGE_QUALITY:
-        title = L"Quality";
-        e.label = L"Auto";      e.value = L"recommended";     e.checked = m_qualityMode == QUALITY_AUTO;     out.push_back( e );
+        out.title = L"Quality";
+        e.label = L"Auto";      e.value = L"recommended";     e.checked = m_qualityMode == QUALITY_AUTO;     out.entries.push_back( e );
         e.label = L"Original";
         e.value = m_burnSubs ? L"not with subtitles on" : L"no conversion";
         e.checked = m_qualityMode == QUALITY_ORIGINAL;
-        out.push_back( e );
+        out.entries.push_back( e );
         for( int i = 0; i < QUALITY_HEIGHT_COUNT; ++i )
         {
             swprintf_s( buf, L"%dp", QUALITY_HEIGHTS[i] );
@@ -1478,28 +1207,28 @@ void PlexApp::MenuEntries( std::vector<MenuEntry>& out, std::wstring& title ) co
             e.value = L"";
             e.opens = true;
             e.checked = m_qualityMode == QUALITY_PRESET && QUALITY_PRESETS[m_qualityPreset].height == QUALITY_HEIGHTS[i];
-            out.push_back( e );
+            out.entries.push_back( e );
         }
         break;
 
     case PAGE_BITRATE:
         swprintf_s( buf, L"%dp", m_menuHeight );
-        title = buf;
+        out.title = buf;
         for( int i = 0; i < QUALITY_PRESET_COUNT; ++i )
             if( QUALITY_PRESETS[i].height == m_menuHeight )
             {
                 e.label = QUALITY_PRESETS[i].bitrateLabel;
                 e.value = L"";
                 e.checked = m_qualityMode == QUALITY_PRESET && m_qualityPreset == i;
-                out.push_back( e );
+                out.entries.push_back( e );
             }
         break;
 
     case PAGE_AUDIO:
     case PAGE_SUBS:
         {
-            int type = m_menuPage == PAGE_AUDIO ? 2 : 3;
-            title = type == 2 ? L"Audio" : L"Subtitles";
+            int type = page == PAGE_AUDIO ? 2 : 3;
+            out.title = type == 2 ? L"Audio" : L"Subtitles";
             std::vector<int> list = TrackList( type );
             const Plex::Stream* selected = m_playMedia.SelectedStream( type );
             for( size_t i = 0; i < list.size(); ++i )
@@ -1518,89 +1247,109 @@ void PlexApp::MenuEntries( std::vector<MenuEntry>& out, std::wstring& title ) co
                     e.checked = s.selected;
                 }
                 e.value = L"";
-                out.push_back( e );
+                out.entries.push_back( e );
             }
-            if( out.empty() )
+            if( out.entries.empty() )
             {
                 e.label = L"No other tracks";
                 e.checked = false;
-                out.push_back( e );
+                out.entries.push_back( e );
             }
         }
         break;
 
     case PAGE_BRIGHTNESS:
-        title = L"Brightness";
+        out.title = L"Brightness";
+        out.slider = true;
+        out.value = m_settings.brightness;
+        out.minValue = -5;
+        out.maxValue = 10;
+        break;
+
+    case PAGE_ASPECT:
+        out.title = L"Aspect ratio";
+        for( int i = 0; i < FFPlayer::ASPECT_COUNT; ++i )
+        {
+            e.label = FFPlayer::AspectName( i );
+            e.checked = i == m_settings.aspect;
+            out.entries.push_back( e );
+        }
         break;
     }
 }
 
-void PlexApp::ChooseMenuEntry()
+MenuMove PlexApp::Choose( int page, int sel )
 {
     double pos = m_player.Position();
-    switch( m_menuPage )
+    switch( page )
     {
     case PAGE_MAIN:
-        switch( m_menuSel )
+        switch( sel )
         {
-        case ROW_QUALITY:    OpenMenuPage( PAGE_QUALITY, m_qualityMode == QUALITY_PRESET ? 2 : m_qualityMode ); break;
-        case ROW_AUDIO:      OpenMenuPage( PAGE_AUDIO, 0 ); break;
-        case ROW_SUBS:       OpenMenuPage( PAGE_SUBS, 0 ); break;
-        case ROW_BRIGHTNESS: OpenMenuPage( PAGE_BRIGHTNESS, 0 ); break;
+        case ROW_QUALITY:
+            {
+                int start = m_qualityMode == QUALITY_PRESET ? 2 : m_qualityMode;
+                if( m_qualityMode == QUALITY_PRESET )
+                    for( int i = 0; i < QUALITY_HEIGHT_COUNT; ++i )
+                        if( QUALITY_HEIGHTS[i] == QUALITY_PRESETS[m_qualityPreset].height )
+                            start = 2 + i;
+                return MenuMove::Open( PAGE_QUALITY, start );
+            }
+        case ROW_AUDIO:
+        case ROW_SUBS:
+            {
+                int sub = sel == ROW_AUDIO ? PAGE_AUDIO : PAGE_SUBS;
+                MenuPage list;
+                BuildMenu( sub, list );
+                int start = 0;
+                for( size_t i = 0; i < list.entries.size(); ++i )
+                    if( list.entries[i].checked )
+                        start = (int)i;
+                return MenuMove::Open( sub, start );
+            }
+        case ROW_BRIGHTNESS:
+            return MenuMove::Open( PAGE_BRIGHTNESS, 0 );
+        case ROW_ASPECT:
+            return MenuMove::Open( PAGE_ASPECT, m_settings.aspect );
         case ROW_STATS:
             m_settings.stats = !m_settings.stats;
             m_settings.Save( "game:\\settings.ini" );
-            break;
-        }
-        if( m_menuPage == PAGE_QUALITY && m_qualityMode == QUALITY_PRESET )
-            for( int i = 0; i < QUALITY_HEIGHT_COUNT; ++i )
-                if( QUALITY_HEIGHTS[i] == QUALITY_PRESETS[m_qualityPreset].height )
-                    m_menuSel = 2 + i;
-        if( m_menuPage == PAGE_AUDIO || m_menuPage == PAGE_SUBS )
-        {
-            std::vector<MenuEntry> entries;
-            std::wstring title;
-            MenuEntries( entries, title );
-            for( size_t i = 0; i < entries.size(); ++i )
-                if( entries[i].checked )
-                    m_menuSel = (int)i;
+            return MenuMove::Stay();
         }
         break;
 
     case PAGE_QUALITY:
-        if( m_menuSel < 2 )
+        if( sel < 2 )
         {
-            int mode = m_menuSel == 0 ? QUALITY_AUTO : QUALITY_ORIGINAL;
-            m_menuOpen = false;
+            int mode = sel == 0 ? QUALITY_AUTO : QUALITY_ORIGINAL;
             if( mode != m_qualityMode )
             {
                 m_qualityMode = mode;
                 Log::Write( "Quality: %s", mode == QUALITY_AUTO ? "auto" : "original" );
                 RestartPlayback( pos, false, L"Changing quality..." );
             }
+            return MenuMove::Close();
         }
         else
         {
-            m_menuHeight = QUALITY_HEIGHTS[m_menuSel - 2];
-            int sel = 0, n = 0;
+            m_menuHeight = QUALITY_HEIGHTS[sel - 2];
+            int start = 0, n = 0;
             for( int i = 0; i < QUALITY_PRESET_COUNT; ++i )
                 if( QUALITY_PRESETS[i].height == m_menuHeight )
                 {
                     if( m_qualityMode == QUALITY_PRESET && m_qualityPreset == i )
-                        sel = n;
+                        start = n;
                     ++n;
                 }
-            OpenMenuPage( PAGE_BITRATE, sel );
+            return MenuMove::Open( PAGE_BITRATE, start );
         }
-        break;
 
     case PAGE_BITRATE:
         {
             int n = 0, chosen = -1;
             for( int i = 0; i < QUALITY_PRESET_COUNT; ++i )
-                if( QUALITY_PRESETS[i].height == m_menuHeight && n++ == m_menuSel )
+                if( QUALITY_PRESETS[i].height == m_menuHeight && n++ == sel )
                     chosen = i;
-            m_menuOpen = false;
             if( chosen >= 0 && !( m_qualityMode == QUALITY_PRESET && m_qualityPreset == chosen ) )
             {
                 m_qualityMode = QUALITY_PRESET;
@@ -1608,222 +1357,67 @@ void PlexApp::ChooseMenuEntry()
                 Log::Write( "Quality: %dp %d kbps", QUALITY_PRESETS[chosen].height, QUALITY_PRESETS[chosen].kbps );
                 RestartPlayback( pos, false, L"Changing quality..." );
             }
+            return MenuMove::Close();
         }
-        break;
 
     case PAGE_AUDIO:
     case PAGE_SUBS:
         {
-            int type = m_menuPage == PAGE_AUDIO ? 2 : 3;
+            int type = page == PAGE_AUDIO ? 2 : 3;
             std::vector<int> list = TrackList( type );
-            m_menuOpen = false;
-            if( m_menuSel >= (int)list.size() )
-                break;
-            int pick = list[m_menuSel];
+            if( sel >= (int)list.size() )
+                return MenuMove::Close();
+            int pick = list[sel];
             bool changed = false;
             for( size_t i = 0; i < m_playMedia.streams.size(); ++i )
                 if( m_playMedia.streams[i].streamType == type )
                 {
-                    bool sel = (int)i == pick;
-                    changed |= m_playMedia.streams[i].selected != sel;
-                    m_playMedia.streams[i].selected = sel;
+                    bool on = (int)i == pick;
+                    changed |= m_playMedia.streams[i].selected != on;
+                    m_playMedia.streams[i].selected = on;
                 }
             if( changed )
                 RestartPlayback( pos, true, type == 2 ? L"Changing audio..." : L"Changing subtitles..." );
+            return MenuMove::Close();
         }
-        break;
 
-    case PAGE_BRIGHTNESS:
-        OpenMenuPage( PAGE_MAIN, ROW_BRIGHTNESS );
-        break;
+    case PAGE_ASPECT:
+        m_player.SetAspect( sel );
+        AspectChanged();
+        return MenuMove::Close();
     }
+    return MenuMove::Stay();
 }
 
-void PlexApp::UpdateMenu( WORD pressed )
+void PlexApp::AspectChanged()
 {
-    // Y closes; B/Left goes back a level.
-    if( pressed & XINPUT_GAMEPAD_Y )
-    {
-        m_menuOpen = false;
-        return;
-    }
-    if( m_menuPage == PAGE_BRIGHTNESS )
-    {
-        int step = ( pressed & XINPUT_GAMEPAD_DPAD_RIGHT ) ? 1 : ( pressed & XINPUT_GAMEPAD_DPAD_LEFT ) ? -1 : 0;
-        if( step )
-        {
-            m_settings.brightness = max( -5, min( 10, m_settings.brightness + step ) );
-            m_settings.Save( "game:\\settings.ini" );
-            ApplySettings();
-        }
-        if( pressed & ( XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B ) )
-            OpenMenuPage( PAGE_MAIN, ROW_BRIGHTNESS );
-        return;
-    }
-
-    std::vector<MenuEntry> entries;
-    std::wstring title;
-    MenuEntries( entries, title );
-    int count = (int)entries.size();
-    if( ( pressed & XINPUT_GAMEPAD_DPAD_DOWN ) && m_menuSel < count - 1 ) ++m_menuSel;
-    if( ( pressed & XINPUT_GAMEPAD_DPAD_UP ) && m_menuSel > 0 )           --m_menuSel;
-
-    if( pressed & ( XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_DPAD_RIGHT ) )
-    {
-        if( m_menuSel < count && ( ( pressed & XINPUT_GAMEPAD_A ) || entries[m_menuSel].opens ) )
-            ChooseMenuEntry();
-        return;
-    }
-    if( pressed & ( XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_DPAD_LEFT ) )
-    {
-        switch( m_menuPage )
-        {
-        case PAGE_MAIN:    m_menuOpen = false; break;
-        case PAGE_BITRATE:
-            for( int i = 0; i < QUALITY_HEIGHT_COUNT; ++i )
-                if( QUALITY_HEIGHTS[i] == m_menuHeight )
-                    OpenMenuPage( PAGE_QUALITY, 2 + i );
-            break;
-        case PAGE_QUALITY: OpenMenuPage( PAGE_MAIN, ROW_QUALITY ); break;
-        case PAGE_AUDIO:   OpenMenuPage( PAGE_MAIN, ROW_AUDIO ); break;
-        case PAGE_SUBS:    OpenMenuPage( PAGE_MAIN, ROW_SUBS ); break;
-        }
-    }
+    m_settings.aspect = m_player.Aspect();
+    m_settings.Save( "game:\\settings.ini" );
 }
 
-void PlexApp::RenderMenu()
+MenuMove PlexApp::Back( int page )
 {
-    std::vector<MenuEntry> entries;
-    std::wstring title;
-    MenuEntries( entries, title );
-
-    const float x0 = 690, x1 = 1230, y0 = 70, rowH = 50;
-    const int maxRows = 8;
-    int count = (int)entries.size();
-    int first = 0;
-    if( count > maxRows )
+    switch( page )
     {
-        first = m_menuSel - maxRows / 2;
-        if( first < 0 ) first = 0;
-        if( first > count - maxRows ) first = count - maxRows;
+    case PAGE_BITRATE:
+        for( int i = 0; i < QUALITY_HEIGHT_COUNT; ++i )
+            if( QUALITY_HEIGHTS[i] == m_menuHeight )
+                return MenuMove::Open( PAGE_QUALITY, 2 + i );
+        return MenuMove::Open( PAGE_QUALITY, 0 );
+    case PAGE_QUALITY:    return MenuMove::Open( PAGE_MAIN, ROW_QUALITY );
+    case PAGE_AUDIO:      return MenuMove::Open( PAGE_MAIN, ROW_AUDIO );
+    case PAGE_SUBS:       return MenuMove::Open( PAGE_MAIN, ROW_SUBS );
+    case PAGE_BRIGHTNESS: return MenuMove::Open( PAGE_MAIN, ROW_BRIGHTNESS );
+    case PAGE_ASPECT:     return MenuMove::Open( PAGE_MAIN, ROW_ASPECT );
     }
-    int shown = m_menuPage == PAGE_BRIGHTNESS ? 2 : min( count, maxRows );
-    float y1 = y0 + 84 + shown * rowH + 56;
-    Draw::Rect( x0, y0, x1, y1, 0xEE141414 );
-    Draw::Rect( x0, y0 + 66, x1, y0 + 67, 0x40FFFFFF );
-
-    D3DRECT full = { 0, 0, 1280, 720 };
-    m_titleFont.SetWindow( full );
-    m_font.SetWindow( full );
-    m_titleFont.Begin();
-    m_titleFont.DrawText( x0 + 28, y0 + 18, COLOR_TEXT,
-                          ( m_menuPage == PAGE_MAIN ? title : L"<  " + title ).c_str() );
-    m_titleFont.End();
-
-    if( m_menuPage == PAGE_BRIGHTNESS )
-    {
-        float bx0 = x0 + 40, bx1 = x1 - 40, by = y0 + 150;
-        float f = ( m_settings.brightness + 5 ) / 15.0f;
-        Draw::Rect( bx0, by, bx1, by + 6, 0x60FFFFFF );
-        Draw::Rect( bx0, by, bx0 + ( bx1 - bx0 ) * f, by + 6, COLOR_ACCENT );
-        float kx = bx0 + ( bx1 - bx0 ) * f;
-        Draw::Rect( kx - 8, by - 6, kx + 8, by + 12, 0xFFFFFFFF );
-        wchar_t buf[16];
-        swprintf_s( buf, L"%+d", m_settings.brightness );
-        m_titleFont.Begin();
-        m_titleFont.DrawText( ( x0 + x1 ) / 2, y0 + 90, COLOR_TEXT, buf, FONT_CENTER_X );
-        m_titleFont.End();
-        m_font.Begin();
-        m_font.DrawText( x0 + 28, y1 - 40, COLOR_DIM, L"Left/Right  Adjust      A  Done" );
-        m_font.End();
-    }
-    else
-    {
-        for( int i = first; i < first + shown; ++i )
-        {
-            const MenuEntry& e = entries[i];
-            float y = y0 + 84 + ( i - first ) * rowH;
-            bool sel = i == m_menuSel;
-            if( sel )
-            {
-                Draw::Rect( x0 + 8, y - 8, x1 - 8, y + rowH - 14, 0xFF303030 );
-                Draw::Rect( x0 + 8, y - 8, x0 + 13, y + rowH - 14, COLOR_ACCENT );
-            }
-            if( e.checked )
-                Draw::Rect( x0 + 24, y + 9, x0 + 32, y + 17, COLOR_ACCENT );   // the current choice
-
-            // The value only gets the room the label leaves.
-            const float labelX = x0 + 44, right = x1 - 24;
-            std::wstring value = e.value + ( e.opens ? L"  >" : L"" );
-            float labelW = 0, h = 0, valueW = 0;
-            m_font.GetTextExtent( e.label.c_str(), &labelW, &h );
-            if( !value.empty() )
-                m_font.GetTextExtent( value.c_str(), &valueW, &h );
-            float labelMax = right - labelX - ( value.empty() ? 0 : min( valueW, ( right - labelX ) * 0.6f ) + 24 );
-            m_font.Begin();
-            m_font.DrawText( labelX, y, sel ? COLOR_TEXT : 0xFFBBBBBB, e.label.c_str(),
-                             labelW > labelMax ? FONT_TRUNCATED : 0, labelMax );
-            if( !value.empty() )
-            {
-                float valueMax = right - labelX - min( labelW, labelMax ) - 24;
-                m_font.DrawText( right, y, sel ? COLOR_ACCENT : COLOR_DIM, value.c_str(),
-                                 FONT_RIGHT | ( valueW > valueMax ? FONT_TRUNCATED : 0 ), valueMax );
-            }
-            m_font.End();
-        }
-        m_font.Begin();
-        m_font.DrawText( x0 + 28, y1 - 40, COLOR_DIM,
-                         m_menuPage == PAGE_MAIN ? L"A  Select      B  Close" : L"A  Select      B  Back      Y  Close" );
-        m_font.End();
-    }
-    m_titleFont.SetWindow( SafeArea() );
-    m_font.SetWindow( SafeArea() );
+    return MenuMove::Close();
 }
 
-void PlexApp::RenderStats()
+void PlexApp::SliderStep( int page, int step )
 {
-    DWORD now = GetTickCount();
-    FFPlayer::Stats st;
-    m_player.GetStats( st );
-    if( now - m_statsTick >= 1000 )
-    {
-        float secs = ( now - m_statsTick ) / 1000.0f;
-        if( m_statsTick )
-        {
-            m_displayFps = ( st.shown - m_statsShown ) / secs;
-            m_mbps = (float)( st.bytesRead - m_statsBytes ) * 8.0f / secs / 1e6f;
-        }
-        m_statsTick = now;
-        m_statsShown = st.shown;
-        m_statsBytes = st.bytesRead;
-    }
-
-    MEMORYSTATUS mem;
-    GlobalMemoryStatus( &mem );
-
-    wchar_t lines[9][160];
-    swprintf_s( lines[0], L"Video     %s", m_player.MediaInfo().c_str() );
-    swprintf_s( lines[1], L"Frames    %ld decoded   %ld shown   %ld dropped   %ld catch-ups%s", st.decoded, st.shown,
-                st.dropped, st.catchups, st.skippingB ? L"   (skipping B-frames)" : L"" );
-    swprintf_s( lines[2], L"Display   %.1f fps   render %.1f ms/frame", m_displayFps, m_renderMs );
-    swprintf_s( lines[3], L"Buffers   video %d packets   audio %d packets   %d ms queued", st.videoPackets,
-                st.audioPackets, st.audioBufferedMs );
-    swprintf_s( lines[4], L"Network   %.2f Mbit/s   %.1f MB read", m_mbps, st.bytesRead / 1048576.0 );
-    swprintf_s( lines[5], L"CPU       %2.0f%%  %2.0f%%  |  %2.0f%%  %2.0f%%  |  %2.0f%%  %2.0f%%     (core 0 | 1 | 2)",
-                m_cpu.Busy( 0 ) * 100, m_cpu.Busy( 1 ) * 100, m_cpu.Busy( 2 ) * 100, m_cpu.Busy( 3 ) * 100,
-                m_cpu.Busy( 4 ) * 100, m_cpu.Busy( 5 ) * 100 );
-    swprintf_s( lines[6], L"Memory    %u MB free of %u MB", (unsigned)( mem.dwAvailPhys >> 20 ), (unsigned)( mem.dwTotalPhys >> 20 ) );
-    swprintf_s( lines[7], L"Colour    %s   brightness %+d", m_player.ColorInfo().c_str(), m_settings.brightness );
-    swprintf_s( lines[8], L"Threads   %d decode   %s", m_cfg.threads, m_transcoding ? L"server transcoding" : L"direct play" );
-
-    Draw::Rect( 30, 30, 840, 30 + 22 + 9 * 24, 0xC0000000 );
-    D3DRECT full = { 0, 0, 1280, 720 };
-    m_font.SetWindow( full );
-    m_font.Begin();
-    m_font.SetScaleFactors( 0.85f, 0.85f );
-    for( int i = 0; i < 9; ++i )
-        m_font.DrawText( 44, 40.0f + i * 24, i == 5 ? COLOR_ACCENT : COLOR_TEXT, lines[i], FONT_TRUNCATED, 780 );
-    m_font.SetScaleFactors( 1.0f, 1.0f );
-    m_font.End();
-    m_font.SetWindow( SafeArea() );
+    if( page != PAGE_BRIGHTNESS )
+        return;
+    m_settings.brightness = max( -5, min( 10, m_settings.brightness + step ) );
+    m_settings.Save( "game:\\settings.ini" );
+    ApplySettings();
 }

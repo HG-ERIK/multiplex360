@@ -1,4 +1,4 @@
-﻿#include <xtl.h>
+#include <xtl.h>
 #include <xaudio2.h>
 #include <d3dx9.h>
 #include <stdio.h>
@@ -107,10 +107,11 @@ FFPlayer::FFPlayer()
       m_brightness( 0.0f ), m_xaudio( NULL ), m_master( NULL ),
       m_voice( NULL ), m_voiceRate( 0 ), m_voiceChannels( 0 ), m_audioNext( 0 ), m_samplesAtBase( 0 ),
       m_audioBasePts( 0 ), m_audioStarted( 0 ), m_quit( 0 ), m_seekRequest( 0 ), m_seekTarget( 0 ),
-      m_flushing( 0 ), m_decodersParked( 0 ), m_current( 0 ), m_stream( NULL ), m_streamPos( 0 ),
+      m_flushing( 0 ), m_decodersParked( 0 ), m_current( 0 ), m_stream( NULL ), m_subWanted( -1 ), m_subChanged( 0 ), m_file( INVALID_HANDLE_VALUE ), m_streamPos( 0 ),
       m_streamSize( -1 ), m_media( NULL ), m_hasAudio( false ), m_hasVideo( false ), m_lastShowTick( 0 ), m_duration( 0 ), m_startSeconds( 0 ), m_timeOffset( 0 ),
       m_active( false ), m_opened( 0 ), m_ended( 0 ), m_paused( false ), m_wallStart( 0 ), m_wallBase( 0 ),
-      m_lastPts( 0 ), m_decoded( 0 ), m_dropped( 0 ), m_shown( 0 ), m_catchups( 0 ), m_bytesRead( 0 ), m_skippingB( false ), m_catchLevel( 0 ), m_speedTest( false ),
+      m_lastPts( 0 ), m_decoded( 0 ), m_dropped( 0 ), m_shown( 0 ), m_catchups( 0 ), m_bytesRead( 0 ), m_skippingB( false ), m_catchLevel( 0 ), m_seekFloor( -1.0 ), m_reachingFloor( 0 ), m_speedTest( false ),
+      m_aspect( ASPECT_AUTO ), m_pixelAspect( 1.0 ), m_tvAspect( 16.0f / 9.0f ), m_screenSaverOff( false ), m_connectionLost( 0 ),
       m_statsTick( 0 )
 {
     m_tex[0] = m_tex[1] = m_tex[2] = NULL;
@@ -221,9 +222,21 @@ void FFPlayer::Open( const std::vector<std::string>& urls, const std::vector<std
     m_catchLevel = 0;
     m_bytesRead = 0;
     m_skippingB = false;
+    m_seekFloor = -1.0;
+    m_reachingFloor = 0;
+    m_connectionLost = 0;
+    m_pixelAspect = 1.0;
+    XVIDEO_MODE mode;
+    XGetVideoMode( &mode );
+    m_tvAspect = mode.fIsWideScreen ? 16.0f / 9.0f : 4.0f / 3.0f;
     m_statsTick = GetTickCount();
     for( int i = 0; i < FRAME_COUNT; ++i )
         m_frames[i].ready = 0;
+    m_tracks.clear();
+    m_cues.clear();
+    m_external.clear();
+    m_subWanted = -1;
+    m_subChanged = 0;
 
     m_active = true;
     m_threads[0] = StartThread( DemuxThread, this, DEMUX_CPU );
@@ -273,7 +286,13 @@ void FFPlayer::Stop()
     Log::Write( "Player media closed" );
     delete m_stream;
     m_stream = NULL;
+    if( m_file != INVALID_HANDLE_VALUE )
+    {
+        CloseHandle( m_file );
+        m_file = INVALID_HANDLE_VALUE;
+    }
     m_active = false;
+    KeepScreenAwake( false );
     Log::Write( "Player stopped (decoded %ld, shown %ld, dropped %ld)", m_decoded, m_shown, m_dropped );
 }
 
@@ -284,7 +303,19 @@ void FFPlayer::Stop()
 int FFPlayer::SourceRead( void* opaque, unsigned char* buf, int size )
 {
     FFPlayer* p = (FFPlayer*)opaque;
-    for( int attempt = 0; attempt < 2; ++attempt )
+    if( p->m_file != INVALID_HANDLE_VALUE )
+    {
+        DWORD got = 0;
+        if( p->m_quit || !ReadFile( p->m_file, buf, size, &got, NULL ) )
+            return -1;
+        p->m_streamPos += got;
+        p->m_bytesRead += got;
+        return (int)got;
+    }
+    // Dropped connection: reconnect at the same position, waiting longer each time
+    // (about 20 s in all) so a short Wi-Fi or internet hiccup doesn't end the film.
+    static const DWORD waits[] = { 0, 1000, 2000, 3000, 5000, 8000 };
+    for( int attempt = 0; ; ++attempt )
     {
         if( p->m_quit )
             return -1;
@@ -295,15 +326,26 @@ int FFPlayer::SourceRead( void* opaque, unsigned char* buf, int size )
             p->m_bytesRead += n;
             return n;
         }
-        if( p->m_quit )
-            return -1;
-        // Dropped connection: reconnect once at the same position.
-        Log::Write( "Stream read failed at %I64d, reconnecting", p->m_streamPos );
-        std::string err;
-        if( !p->m_stream->Open( p->m_urls[p->m_current], p->m_headers, p->m_streamPos, err ) )
-            return -1;
+        for( ;; )
+        {
+            if( attempt >= (int)( sizeof( waits ) / sizeof( waits[0] ) ) )
+            {
+                Log::Write( "Stream lost at %I64d, giving up", p->m_streamPos );
+                InterlockedExchange( &p->m_connectionLost, 1 );
+                return -1;
+            }
+            Log::Write( "Stream read failed at %I64d, reconnecting (try %d)", p->m_streamPos, attempt + 1 );
+            for( DWORD waited = 0; waited < waits[attempt] && !p->m_quit; waited += 100 )
+                Sleep( 100 );
+            if( p->m_quit )
+                return -1;
+            std::string err;
+            if( p->m_stream->Open( p->m_urls[p->m_current], p->m_headers, p->m_streamPos, err ) )
+                break;
+            Log::Write( "Reconnect failed: %s", err.c_str() );
+            ++attempt;
+        }
     }
-    return -1;
 }
 
 int FFPlayer::SourceSeek( void* opaque, __int64 pos )
@@ -311,6 +353,15 @@ int FFPlayer::SourceSeek( void* opaque, __int64 pos )
     FFPlayer* p = (FFPlayer*)opaque;
     if( pos == p->m_streamPos )
         return 0;
+    if( p->m_file != INVALID_HANDLE_VALUE )
+    {
+        LARGE_INTEGER to;
+        to.QuadPart = pos;
+        if( !SetFilePointerEx( p->m_file, to, NULL, FILE_BEGIN ) )
+            return -1;
+        p->m_streamPos = pos;
+        return 0;
+    }
     if( pos > p->m_streamPos && pos - p->m_streamPos < SKIP_READ_LIMIT )
     {
         char scratch[16384];
@@ -335,35 +386,57 @@ int FFPlayer::SourceSeek( void* opaque, __int64 pos )
     return 0;
 }
 
+bool FFPlayer::OpenStream( std::string& error )
+{
+    Http::Stream* fresh = new Http::Stream;
+    EnterCriticalSection( &m_lock );
+    delete m_stream;
+    m_stream = fresh;
+    LeaveCriticalSection( &m_lock );
+    m_streamPos = 0;
+    // 503: the server may still be ending our previous stream. Retry for ~6 s.
+    bool opened = m_stream->Open( m_urls[m_current], m_headers, 0, error );
+    for( int retry = 0; !opened && retry < 8 && !m_quit && error.find( "HTTP 503" ) != std::string::npos; ++retry )
+    {
+        Log::Write( "Player source %u busy (503), retrying", (unsigned)m_current );
+        Sleep( 750 );
+        Http::Stream* again = new Http::Stream;
+        EnterCriticalSection( &m_lock );
+        delete m_stream;
+        m_stream = again;
+        LeaveCriticalSection( &m_lock );
+        opened = m_stream->Open( m_urls[m_current], m_headers, 0, error );
+    }
+    if( !opened )
+    {
+        Log::Write( "Player source %u failed: %s", (unsigned)m_current, error.c_str() );
+        return false;
+    }
+    m_streamSize = m_stream->TotalSize();
+    return true;
+}
+
 bool FFPlayer::OpenMedia( std::string& error )
 {
     for( m_current = 0; m_current < m_urls.size(); ++m_current )
     {
-        Http::Stream* fresh = new Http::Stream;
-        EnterCriticalSection( &m_lock );
-        delete m_stream;
-        m_stream = fresh;
-        LeaveCriticalSection( &m_lock );
-        m_streamPos = 0;
-        // 503: the server may still be ending our previous stream. Retry for ~6 s.
-        bool opened = m_stream->Open( m_urls[m_current], m_headers, 0, error );
-        for( int retry = 0; !opened && retry < 8 && !m_quit && error.find( "HTTP 503" ) != std::string::npos; ++retry )
+        if( m_urls[m_current].find( "://" ) == std::string::npos )
         {
-            Log::Write( "Player source %u busy (503), retrying", (unsigned)m_current );
-            Sleep( 750 );
-            Http::Stream* again = new Http::Stream;
-            EnterCriticalSection( &m_lock );
-            delete m_stream;
-            m_stream = again;
-            LeaveCriticalSection( &m_lock );
-            opened = m_stream->Open( m_urls[m_current], m_headers, 0, error );
+            m_file = CreateFileA( m_urls[m_current].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+                                  FILE_ATTRIBUTE_NORMAL, NULL );
+            if( m_file == INVALID_HANDLE_VALUE )
+            {
+                error = "Can't open the file";
+                Log::Write( "Player source %u: can't open %s", (unsigned)m_current, m_urls[m_current].c_str() );
+                continue;
+            }
+            LARGE_INTEGER size;
+            GetFileSizeEx( m_file, &size );
+            m_streamSize = size.QuadPart;
+            m_streamPos = 0;
         }
-        if( !opened )
-        {
-            Log::Write( "Player source %u failed: %s", (unsigned)m_current, error.c_str() );
+        else if( !OpenStream( error ) )
             continue;
-        }
-        m_streamSize = m_stream->TotalSize();
 
         FgSource src;
         src.opaque = this;
@@ -387,6 +460,8 @@ bool FFPlayer::OpenMedia( std::string& error )
             m_duration = info.duration;
         m_hasAudio = info.hasAudio && m_xaudio;
         m_hasVideo = info.hasVideo != 0;
+        if( info.pixelAspect > 0.25 && info.pixelAspect < 4.0 )
+            m_pixelAspect = info.pixelAspect;
         wchar_t buf[160];
         swprintf_s( buf, L"%s %dx%d%s%s", Widen( info.videoCodec ).c_str(), info.width, info.height,
                     info.hasAudio ? L" / " : L"", Widen( info.audioCodec ).c_str() );
@@ -507,6 +582,10 @@ void FFPlayer::DoSeek( double seconds )
     m_lastPts = seconds;
     m_wallBase = seconds;
     m_wallStart = GetTickCount();
+    // The demuxer lands on the keyframe before the target (up to ~10 s early in some
+    // files); decode up to the target without showing it so the jump is exact.
+    m_seekFloor = seconds;
+    m_reachingFloor = m_hasVideo ? 1 : 0;
 
     InterlockedExchange( &m_seekRequest, 0 );
     InterlockedExchange( &m_flushing, 0 );
@@ -527,6 +606,16 @@ void FFPlayer::DemuxLoop()
     m_threads[1] = StartThread( VideoThread, this, VIDEO_CPU );
     if( m_hasAudio )
         m_threads[2] = StartThread( AudioThread, this, AUDIO_CPU );
+    std::vector<FgTrack> tracks;
+    for( int i = 0; i < fg_track_count( m_media ); ++i )
+    {
+        FgTrack tr;
+        fg_get_track( m_media, i, &tr );
+        tracks.push_back( tr );
+    }
+    EnterCriticalSection( &m_lock );
+    m_tracks = tracks;
+    LeaveCriticalSection( &m_lock );
     InterlockedExchange( &m_opened, 1 );
 
     if( m_startSeconds > 1.0 )
@@ -535,6 +624,13 @@ void FFPlayer::DemuxLoop()
     bool eof = false;
     while( !m_quit )
     {
+        if( InterlockedExchange( &m_subChanged, 0 ) )
+        {
+            fg_select_subtitle( m_media, m_subWanted );
+            EnterCriticalSection( &m_lock );
+            m_cues.clear();
+            LeaveCriticalSection( &m_lock );
+        }
         if( m_seekRequest )
         {
             DoSeek( m_seekTarget );
@@ -575,7 +671,11 @@ void FFPlayer::DemuxLoop()
         else if( type == FG_PACKET_AUDIO && m_hasAudio && !m_speedTest )
             Push( m_audioQ, m_audioData, pkt );   // the speed test drops audio so it can't hold the demuxer back
         else
+        {
+            if( type == FG_PACKET_SUBTITLE )
+                AddSubtitle( pkt );
             fg_free_packet( pkt );
+        }
     }
 }
 
@@ -617,6 +717,21 @@ void FFPlayer::VideoLoop()
         InterlockedIncrement( &m_decoded );
         if( m_speedTest )
             continue;   // benchmark: measure decoding alone
+
+        if( m_reachingFloor )
+        {
+            if( pic.pts >= 0 && pic.pts < m_seekFloor - 0.02 )
+            {
+                if( m_catchLevel != 2 )
+                {
+                    m_catchLevel = 2;           // B-frames before the target aren't needed
+                    m_skippingB = true;
+                    fg_set_fast( m_media, 2 );
+                }
+                continue;
+            }
+            InterlockedExchange( &m_reachingFloor, 0 );
+        }
 
         // Catch-up: slightly late -> skip B-frame deblocking, clearly late -> skip B-frames.
         double clock = Clock();
@@ -693,11 +808,14 @@ void FFPlayer::AudioLoop()
         fg_free_packet( pkt );
         if( bytes > 0 )
         {
-            // The decoder downmixes AC3/DTS to stereo; others report their own channel count.
+            // XAudio2 takes up to 8 channels and mixes them down to the console's output.
             fg_get_info( m_media, &info );
             int channels = info.channels > 0 ? info.channels : 2;
-            if( channels > 6 )
-                channels = 2;
+            if( channels > 8 )
+                continue;
+            if( pts >= 0 && info.sampleRate > 0 &&
+                pts + (double)bytes / ( info.sampleRate * channels * 2 ) < m_seekFloor )
+                continue;   // before the seek target
             SubmitAudio( &pcm[0], bytes, pts, info.sampleRate, channels );
         }
     }
@@ -761,8 +879,10 @@ bool FFPlayer::SubmitAudio( const short* pcm, int bytes, double pts, int rate, i
     {
         // Preroll: frame threading delays the first frames, so wait (up to 2 s) for the
         // frame slots to fill before starting the clock.
+        // Longer while the video is still decoding its way to a seek target.
         DWORD waitStart = GetTickCount();
-        while( m_hasVideo && !m_quit && !m_flushing && !m_ended && GetTickCount() - waitStart < 2000 )
+        while( m_hasVideo && !m_quit && !m_flushing && !m_ended &&
+               GetTickCount() - waitStart < ( m_reachingFloor ? 10000u : 2000u ) )
         {
             int ready = 0;
             for( int i = 0; i < FRAME_COUNT; ++i )
@@ -777,6 +897,34 @@ bool FFPlayer::SubmitAudio( const short* pcm, int bytes, double pts, int rate, i
         m_voice->GetState( &st );
         m_samplesAtBase = st.SamplesPlayed;
         m_audioBasePts = pts >= 0 ? pts : m_lastPts;
+
+        // Sound that starts later than the picture: play silence for the gap so the
+        // picture runs from its first frame instead of being dropped until the sound starts.
+        double first = -1.0;
+        EnterCriticalSection( &m_lock );
+        for( int i = 0; i < FRAME_COUNT; ++i )
+            if( m_frames[i].ready && m_frames[i].pts >= 0 && ( first < 0 || m_frames[i].pts < first ) )
+                first = m_frames[i].pts;
+        LeaveCriticalSection( &m_lock );
+        double gap = first >= 0 && pts >= 0 ? pts - first : 0.0;
+        if( gap > 0.1 && gap < 25.0 )
+        {
+            // One short zero buffer, looped (XAudio2 allows up to 254 repeats).
+            int loops = (int)ceil( gap / 0.1 );
+            UINT32 samples = (UINT32)( gap * rate / loops );
+            size_t need = (size_t)samples * channels * 2;
+            if( m_silence.size() < need )
+                m_silence.assign( 96000 / 10 * 8 * 2 > need ? 96000 / 10 * 8 * 2 : need, 0 );
+            XAUDIO2_BUFFER sb;
+            ZeroMemory( &sb, sizeof( sb ) );
+            sb.AudioBytes = (UINT32)need;
+            sb.pAudioData = &m_silence[0];
+            sb.LoopLength = samples;
+            sb.LoopCount = loops - 1;
+            m_voice->SubmitSourceBuffer( &sb );
+            m_audioBasePts = pts - (double)samples * loops / rate;
+            Log::Write( "Sound starts %.2f s after the picture: padded with silence", gap );
+        }
     }
     m_voice->SubmitSourceBuffer( &xb );
     if( !m_audioStarted )
@@ -815,8 +963,24 @@ double FFPlayer::Position() const
 //--------------------------------------------------------------------------------------
 // Render thread
 //--------------------------------------------------------------------------------------
+void FFPlayer::KeepScreenAwake( bool awake )
+{
+    // The console dims the TV after ~10 minutes without controller input; not while a film plays.
+    if( awake == m_screenSaverOff )
+        return;
+    XEnableScreenSaver( awake ? FALSE : TRUE );
+    m_screenSaverOff = awake;
+}
+
+const wchar_t* FFPlayer::AspectName( int mode )
+{
+    static const wchar_t* const names[ASPECT_COUNT] = { L"Auto", L"Zoom", L"Stretch", L"4:3", L"16:9" };
+    return mode >= 0 && mode < ASPECT_COUNT ? names[mode] : names[0];
+}
+
 void FFPlayer::Update()
 {
+    KeepScreenAwake( m_active && m_opened && !m_paused );
     if( !m_active )
         return;
 
@@ -834,7 +998,13 @@ void FFPlayer::Update()
             pending = pending || m_frames[i].ready;
         if( !pending )
         {
-            Log::Write( "Playback finished" );
+            if( m_connectionLost )
+            {
+                m_error = "Connection lost";
+                Log::Write( "Playback stopped: connection lost at %.1f s", Position() );
+            }
+            else
+                Log::Write( "Playback finished" );
             Stop();
             return;
         }
@@ -977,11 +1147,18 @@ void FFPlayer::RenderFrame( const D3DRECT& screen )
         return;
 
     float sw = (float)( screen.x2 - screen.x1 ), sh = (float)( screen.y2 - screen.y1 );
-    float aspect = (float)m_frameW / (float)m_frameH;
+    // The picture's shape on the TV, then in our 1280x720 buffer: a 4:3 TV squeezes the
+    // whole buffer into 4:3, so each buffer pixel shows narrower than it is tall.
+    float picture = (float)( m_frameW * m_pixelAspect / m_frameH );
+    if( m_aspect == ASPECT_4_3 )  picture = 4.0f / 3.0f;
+    if( m_aspect == ASPECT_16_9 ) picture = 16.0f / 9.0f;
+    float aspect = picture * ( sw / sh ) / m_tvAspect;
     float w = sw, h = sw / aspect;
-    if( h > sh )
-    {
+    if( m_aspect == ASPECT_STRETCH )
         h = sh;
+    else if( m_aspect == ASPECT_ZOOM ? h < sh : h > sh )
+    {
+        h = sh;             // Zoom: fill the height and crop the sides; else fit inside
         w = sh * aspect;
     }
     float x0 = ( sw - w ) / sw - 1.0f, x1 = x0 + 2.0f * w / sw;
@@ -1070,4 +1247,65 @@ void FFPlayer::GetStats( Stats& s )
         m_voice->GetState( &st );
         s.audioBufferedMs = (int)st.BuffersQueued * 32;
     }
+}
+//--------------------------------------------------------------------------------------
+// Subtitles
+//--------------------------------------------------------------------------------------
+void FFPlayer::AddSubtitle( FgPacket* pkt )
+{
+    char text[1024];
+    double start, duration;
+    if( !fg_subtitle( m_media, pkt, text, sizeof( text ), &start, &duration ) )
+        return;
+    SubtitleCue cue;
+    cue.start = start;
+    cue.end = start + duration;
+    cue.text = text;
+    EnterCriticalSection( &m_lock );
+    // After a seek the same packets come again; keep each line once, in time order.
+    size_t i = m_cues.size();
+    while( i > 0 && m_cues[i - 1].start > start )
+        --i;
+    if( i == 0 || m_cues[i - 1].start != start )
+        m_cues.insert( m_cues.begin() + i, cue );
+    LeaveCriticalSection( &m_lock );
+}
+
+std::vector<FgTrack> FFPlayer::Tracks()
+{
+    EnterCriticalSection( &m_lock );
+    std::vector<FgTrack> out = m_tracks;
+    LeaveCriticalSection( &m_lock );
+    return out;
+}
+
+void FFPlayer::SetSubtitleTrack( int index )
+{
+    m_subWanted = index;
+    InterlockedExchange( &m_subChanged, 1 );
+}
+
+void FFPlayer::SetExternalSubtitles( const std::vector<SubtitleCue>& cues )
+{
+    SetSubtitleTrack( -1 );
+    EnterCriticalSection( &m_lock );
+    m_external = cues;
+    LeaveCriticalSection( &m_lock );
+}
+
+std::string FFPlayer::SubtitleAt( double seconds )
+{
+    double t = seconds - m_timeOffset;
+    std::string out;
+    EnterCriticalSection( &m_lock );
+    const std::vector<SubtitleCue>& cues = m_external.empty() ? m_cues : m_external;
+    for( size_t i = 0; i < cues.size() && cues[i].start <= t; ++i )
+        if( t < cues[i].end )
+        {
+            if( !out.empty() )
+                out += "\n";
+            out += cues[i].text;
+        }
+    LeaveCriticalSection( &m_lock );
+    return out;
 }

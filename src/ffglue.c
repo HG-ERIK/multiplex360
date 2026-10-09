@@ -1,4 +1,4 @@
-﻿/* See ffglue.h. Compiled as C against external/ffmpeg360 (FFmpeg 0.7 era API). */
+/* See ffglue.h. Compiled as C against external/ffmpeg360 (FFmpeg 0.7 era API). */
 #include <xtl.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,8 +11,10 @@
 /* Video decode threads (FFmpeg frame threading). Needs the native xbthreads layer:
    pthreads-win32 froze the console. Workers run on hardware threads 3, 4, 5, 2. */
 static int g_decodeThreads = 4;
+static int g_stereo = 1;
 
 void fg_set_decode_threads( int n ) { g_decodeThreads = n < 1 ? 1 : ( n > 6 ? 6 : n ); }
+void fg_set_stereo( int on ) { g_stereo = on; }
 
 /* Container stream index of the audio track to play (-1 = first audio track). */
 static int g_preferredAudio = -1;
@@ -32,7 +34,7 @@ struct FgMedia
     AVIOContext*      io;
     unsigned char*    ioBuffer;
     AVFormatContext*  fmt;
-    int               videoIndex, audioIndex;
+    int               videoIndex, audioIndex, subIndex;
     AVCodecContext*   vctx;
     AVCodecContext*   actx;
     AVFrame*          frame;
@@ -78,14 +80,15 @@ static AVCodecContext* OpenDecoder( AVStream* st, int isVideo )
     }
     else
     {
-        ctx->request_channels = 2;    /* AC3/DTS downmix in the decoder */
+        if( g_stereo )
+            ctx->request_channels = 2;    /* AC3/DTS downmix in the decoder */
     }
     if( avcodec_open( ctx, codec ) < 0 )
         return NULL;
     if( isVideo && g_log )
     {
         char line[200];
-        sprintf_s( line, "fg_open: video decoder %s, %d threads, active threading %s, profile %d level %d, refs %d, "
+        sprintf_s( line, sizeof( line ), "fg_open: video decoder %s, %d threads, active threading %s, profile %d level %d, refs %d, "
                    "b-frames %d, %s\n", codec->name, ctx->thread_count,
                    ctx->active_thread_type == FF_THREAD_FRAME ? "frame" :
                    ctx->active_thread_type == FF_THREAD_SLICE ? "slice" : "none",
@@ -124,7 +127,7 @@ FgMedia* fg_open( FgSource* src, const char* name, char* err, int errSize )
     unsigned i;
 
     m->src = *src;
-    m->videoIndex = m->audioIndex = -1;
+    m->videoIndex = m->audioIndex = m->subIndex = -1;
     m->ioBuffer = (unsigned char*)av_malloc( IO_BUFFER_SIZE );
     m->io = avio_alloc_context( m->ioBuffer, IO_BUFFER_SIZE, 0, m, ReadCb, NULL, SeekCb );
     if( src->size < 0 )
@@ -236,6 +239,11 @@ void fg_get_info( FgMedia* m, FgInfo* info )
         info->refs = m->vctx->refs;
         if( st->r_frame_rate.den )
             info->fps = av_q2d( st->r_frame_rate );
+        /* The container's value wins (MKV display size), as in ffplay. */
+        if( st->sample_aspect_ratio.num > 0 && st->sample_aspect_ratio.den > 0 )
+            info->pixelAspect = av_q2d( st->sample_aspect_ratio );
+        else if( m->vctx->sample_aspect_ratio.num > 0 && m->vctx->sample_aspect_ratio.den > 0 )
+            info->pixelAspect = av_q2d( m->vctx->sample_aspect_ratio );
     }
     if( m->actx )
     {
@@ -265,6 +273,8 @@ int fg_read_packet( FgMedia* m, FgPacket** out )
         return FG_PACKET_VIDEO;
     if( p->pkt.stream_index == m->audioIndex && m->actx )
         return FG_PACKET_AUDIO;
+    if( p->pkt.stream_index == m->subIndex )
+        return FG_PACKET_SUBTITLE;
     return FG_PACKET_OTHER;
 }
 
@@ -426,4 +436,103 @@ void fg_profile( double* cabacMs, double* reconMs, double* filterMs, double* wai
     *waitMs = ff_xb_await_ticks / ticksPerMs;
     if( reset )
         ff_xb_await_ticks = 0;
+}
+static void Tag( AVStream* st, const char* key, char* out, int size )
+{
+    AVMetadataTag* tag = av_metadata_get( st->metadata, key, NULL, 0 );
+    strncpy_s( out, size, tag && tag->value ? tag->value : "", _TRUNCATE );
+}
+
+static int IsTextSubtitle( enum CodecID id )
+{
+    return id == CODEC_ID_TEXT || id == CODEC_ID_SRT || id == CODEC_ID_SSA || id == CODEC_ID_MOV_TEXT;
+}
+
+static AVStream* TrackStream( FgMedia* m, int n )
+{
+    unsigned i;
+    for( i = 0; i < m->fmt->nb_streams; ++i )
+    {
+        enum AVMediaType t = m->fmt->streams[i]->codec->codec_type;
+        if( t == AVMEDIA_TYPE_AUDIO || t == AVMEDIA_TYPE_SUBTITLE )
+            if( n-- == 0 )
+                return m->fmt->streams[i];
+    }
+    return NULL;
+}
+
+int fg_track_count( FgMedia* m )
+{
+    int n = 0;
+    while( TrackStream( m, n ) )
+        ++n;
+    return n;
+}
+
+void fg_get_track( FgMedia* m, int n, FgTrack* track )
+{
+    AVStream* st = TrackStream( m, n );
+    memset( track, 0, sizeof( *track ) );
+    if( !st )
+        return;
+    track->index = st->index;
+    track->type = st->codec->codec_type == AVMEDIA_TYPE_AUDIO ? 2 : 3;
+    track->channels = st->codec->channels;
+    track->text = track->type == 3 && IsTextSubtitle( st->codec->codec_id );
+    CodecName( st->codec, track->codec, sizeof( track->codec ) );
+    if( !track->codec[0] && track->text )
+        strcpy_s( track->codec, sizeof( track->codec ), st->codec->codec_id == CODEC_ID_SSA ? "ass" : "srt" );
+    Tag( st, "language", track->language, sizeof( track->language ) );
+    Tag( st, "title", track->title, sizeof( track->title ) );
+}
+
+void fg_select_subtitle( FgMedia* m, int containerIndex )
+{
+    if( m->subIndex >= 0 )
+        m->fmt->streams[m->subIndex]->discard = AVDISCARD_ALL;
+    m->subIndex = -1;
+    if( containerIndex >= 0 && containerIndex < (int)m->fmt->nb_streams &&
+        m->fmt->streams[containerIndex]->codec->codec_type == AVMEDIA_TYPE_SUBTITLE )
+    {
+        m->subIndex = containerIndex;
+        m->fmt->streams[containerIndex]->discard = AVDISCARD_DEFAULT;
+    }
+}
+
+int fg_subtitle( FgMedia* m, FgPacket* p, char* text, int size, double* start, double* duration )
+{
+    AVStream* st = m->fmt->streams[p->pkt.stream_index];
+    const char* data = (const char*)p->pkt.data;
+    int len = p->pkt.size, i, commas = 0;
+    int64_t dur = p->pkt.convergence_duration > 0 ? p->pkt.convergence_duration : p->pkt.duration;
+    if( !data || len <= 0 || size <= 1 )
+        return 0;
+    if( st->codec->codec_id == CODEC_ID_MOV_TEXT )
+    {
+        /* 16-bit big-endian length, then the text */
+        int n = len >= 2 ? ( ( (unsigned char)data[0] << 8 ) | (unsigned char)data[1] ) : 0;
+        data += 2;
+        len = n < len - 2 ? n : len - 2;
+    }
+    else if( st->codec->codec_id == CODEC_ID_SSA )
+    {
+        /* Matroska ASS events: ReadOrder,Layer,Style,Name,MarginL,MarginR,MarginV,Effect,Text */
+        for( i = 0; i < len && commas < 8; ++i )
+            if( data[i] == ',' )
+                ++commas;
+        if( commas == 8 )
+        {
+            data += i;
+            len -= i;
+        }
+    }
+    if( len <= 0 )
+        return 0;
+    if( len > size - 1 )
+        len = size - 1;
+    memcpy( text, data, len );
+    text[len] = 0;
+    *start = TsToSeconds( m, p->pkt.stream_index, p->pkt.pts != AV_NOPTS_VALUE ? p->pkt.pts : p->pkt.dts );
+    *duration = dur > 0 ? dur * av_q2d( st->time_base ) : 3.0;
+    return *start >= 0;
 }
