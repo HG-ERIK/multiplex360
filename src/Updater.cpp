@@ -215,8 +215,24 @@ void Updater::Render( Font& font, Font& title, float width )
             at = nl == std::wstring::npos ? g_notes.size() : nl + 1;
             if( l.compare( 0, 2, L"- " ) == 0 || l.compare( 0, 2, L"* " ) == 0 ) l = L"\x2022 " + l.substr( 2 );
             while( !l.empty() && ( l[0] == L'#' ) ) l.erase( 0, 1 );
-            font.DrawText( cx - width * 0.4f, y, 0xffeeeeee, l.c_str(), FONT_TRUNCATED, width * 0.8f );
-            y += 30;
+            // Wrapped at spaces to the box's width; wrapped lines are indented under a bullet.
+            const float boxW = width * 0.8f;
+            std::wstring rest = l, indent = l.compare( 0, 2, L"\x2022 " ) == 0 ? L"   " : L"";
+            do
+            {
+                size_t cut = rest.size();
+                while( cut > 0 && font.GetTextWidth( rest.substr( 0, cut ).c_str() ) > boxW )
+                {
+                    size_t sp = rest.rfind( L' ', cut - 1 );
+                    cut = sp == std::wstring::npos || sp == 0 ? cut - 1 : sp;
+                }
+                if( cut == 0 ) cut = rest.size();
+                font.DrawText( cx - width * 0.4f, y, 0xffeeeeee, rest.substr( 0, cut ).c_str(), FONT_TRUNCATED, boxW );
+                y += 30;
+                rest = cut < rest.size() ? indent + rest.substr( rest.find_first_not_of( L' ', cut ) == std::wstring::npos ? rest.size() : rest.find_first_not_of( L' ', cut ) ) : L"";
+                ++n;
+            } while( !rest.empty() && n < 13 && rest != indent );
+            --n;
         }
         font.DrawText( cx, 560, 0xffeeeeee, L"A  Update now (your settings stay)          B  Later", FONT_CENTER_X );
     }
