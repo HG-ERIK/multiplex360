@@ -437,7 +437,7 @@ bool Http::Stream::ReadLine( std::string& line )
 }
 
 bool Http::Stream::Open( const std::string& urlStr, const std::string& extraHeaders, __int64 offset,
-                         std::string& error )
+                         std::string& error, int redirects )
 {
     Close();
     m_status = 0;
@@ -512,9 +512,15 @@ bool Http::Stream::Open( const std::string& urlStr, const std::string& extraHead
     m_status = atoi( line.c_str() + line.find( ' ' ) + 1 );
 
     __int64 contentLength = -1;
+    std::string location;
     while( ReadLine( line ) && !line.empty() )
     {
         std::string lower = ToLower( line );
+        if( lower.compare( 0, 9, "location:" ) == 0 )
+        {
+            location = line.substr( 9 );
+            location.erase( 0, location.find_first_not_of( " \t" ) );
+        }
         if( lower.compare( 0, 15, "content-length:" ) == 0 )
             contentLength = _atoi64( line.c_str() + 15 );
         else if( lower.compare( 0, 14, "content-range:" ) == 0 )
@@ -528,6 +534,13 @@ bool Http::Stream::Open( const std::string& urlStr, const std::string& extraHead
             m_chunked = true;
     }
 
+    if( ( m_status == 301 || m_status == 302 || m_status == 303 || m_status == 307 || m_status == 308 ) &&
+        !location.empty() && redirects < 5 )
+    {
+        Log::Write( "Stream %s%s -> %d, following", url.host.c_str(), url.path.substr( 0, url.path.find( '?' ) ).c_str(), m_status );
+        Close();
+        return Open( location, extraHeaders, offset, error, redirects + 1 );
+    }
     if( m_status != 200 && m_status != 206 )
     {
         char buf[48];

@@ -18,6 +18,10 @@ protected:
     virtual HRESULT Render() = 0;
 };
 
+// The picture's width: 1280 on a widescreen TV; 960 when the console is set to 4:3 (normal), where the
+// back buffer itself is 960x720 (a 16:9 one would be letterboxed). Height is always 720.
+int ScreenWidth();
+
 // The title-safe area: 10% in from each edge, where TVs never crop.
 D3DRECT SafeArea();
 

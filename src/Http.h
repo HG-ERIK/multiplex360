@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <string>
 
 namespace Http
@@ -46,8 +46,9 @@ namespace Http
         Stream();
         ~Stream();
 
+        // Follows redirects (301/302/303/307/308, up to 5: GitHub release downloads use one).
         bool Open( const std::string& url, const std::string& extraHeaders, __int64 offset,
-                   std::string& error );
+                   std::string& error, int redirects = 0 );
         int  Read( char* buf, int size );    // bytes read, 0 at end, < 0 on error
         void Close();
 

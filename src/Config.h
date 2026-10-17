@@ -19,6 +19,7 @@ struct Config
     int         testCrash;    // testing: crash on purpose this many seconds after start (checks Guard)
     int         testHang;     // testing: freeze the main loop this many seconds after start
     std::string logTo;        // debugging: ip:port that receives log lines over UDP
+    std::string updateFrom;   // testing: a URL answering like GitHub's releases/latest (default: GitHub)
 
     Config() : connection( "auto" ), threads( 4 ), directMax( 720 ), quality( 720 ), kbps( 4000 ), testSeek( 0 ),
                testOsd( false ), autoplayStart( 0 ), benchmark( 0 ), testCrash( 0 ), testHang( 0 ) {}

@@ -4,7 +4,7 @@
 
 namespace
 {
-    LONG g_width = 1280, g_height = 720;
+    LONG g_width = 1280, g_height = 720;     // the interface's size (see ScreenWidth)
 }
 
 App::App() : m_pd3dDevice( NULL )
@@ -23,6 +23,11 @@ App::App() : m_pd3dDevice( NULL )
 
 void App::Run()
 {
+    // A console set to 4:3 (normal) letterboxes a 16:9 picture; a 4:3-shaped buffer fills the screen instead.
+    XVIDEO_MODE video;
+    XGetVideoMode( &video );
+    if( !video.fIsWideScreen )
+        m_d3dpp.BackBufferWidth = m_d3dpp.BackBufferHeight * 4 / 3;     // 960x720
     IDirect3D9* d3d = Direct3DCreate9( D3D_SDK_VERSION );
     HRESULT hr = d3d ? d3d->CreateDevice( 0, D3DDEVTYPE_HAL, NULL, 0, &m_d3dpp, &m_pd3dDevice ) : E_FAIL;
     if( d3d )
@@ -45,6 +50,8 @@ void App::Run()
         Render();
     }
 }
+
+int ScreenWidth() { return g_width; }
 
 D3DRECT SafeArea()
 {

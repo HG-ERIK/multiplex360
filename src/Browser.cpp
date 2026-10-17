@@ -1,7 +1,8 @@
-﻿#include <xtl.h>
+#include <xtl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <map>
+#include "App.h"
 #include "Browser.h"
 #include "Quality.h"
 #include "Draw.h"
@@ -21,7 +22,7 @@ namespace
 
     const float SIDEBAR_W   = 250.0f;
     const float CONTENT_X   = 290.0f;
-    const float CONTENT_R   = 1216.0f;
+    #define CONTENT_R ( ScreenWidth() - 64.0f )
     const float TOP_Y       = 56.0f;
 
     const float HUB_POSTER_W = 150.0f, HUB_POSTER_H = 225.0f, HUB_GAP = 22.0f, HUB_ROW_H = 345.0f;
@@ -825,7 +826,7 @@ void Browser::Text( Font* font, float x, float y, DWORD color, const std::wstrin
     // Absolute screen coordinates (the font treats negatives as offsets from the far edge).
     D3DRECT window;
     font->GetWindow( window );
-    font->SetWindow( 0, 0, 1280, 720 );
+    font->SetWindow( 0, 0, ScreenWidth(), 720 );
     font->Begin();
     font->SetScaleFactors( scale, scale );
     font->DrawText( x, y, color, Displayable( s ).c_str(), flags | ( maxWidth > 0 ? FONT_TRUNCATED : 0 ), maxWidth );
@@ -840,7 +841,7 @@ int Browser::WrapText( Font* font, float x, float y, float width, int maxLines, 
     std::wstring s = Displayable( text );
     D3DRECT window;
     font->GetWindow( window );
-    font->SetWindow( 0, 0, 1280, 720 );
+    font->SetWindow( 0, 0, ScreenWidth(), 720 );
     font->Begin();
     font->SetScaleFactors( scale, scale );
     float lineH = font->GetFontHeight() * scale;
@@ -928,11 +929,11 @@ void Browser::Poster( const Plex::Item& it, float x, float y, float w, float h, 
 
 void Browser::RenderBackground( const std::string& art )
 {
-    Draw::Rect( 0, 0, 1280, 720, C_BG );
+    Draw::Rect( 0, 0, (float)ScreenWidth(), 720, C_BG );
     IDirect3DTexture9* tex = art.empty() ? NULL : m_images->Get( art, 640, 360 );
     if( tex )
     {
-        Draw::Image( tex, 0, 0, 1280, 720, 0xFF4A4A4A );   // darkened
+        Draw::Image( tex, 0, 0, (float)ScreenWidth(), 720, 0xFF4A4A4A );   // darkened
         for( int i = 0; i < 16; ++i )
             Draw::Rect( i * 60.0f, 0, i * 60.0f + 60, 720, (DWORD)( 200 - i * 12 ) << 24 );
     }
@@ -1039,7 +1040,7 @@ void Browser::RenderHome( Screen& s )
         for( int c = scroll; c < (int)hub.items.size(); ++c )
         {
             float px = CONTENT_X + ( c - scroll ) * ( HUB_POSTER_W + HUB_GAP );
-            if( px > 1280 )
+            if( px > ScreenWidth() )
                 break;   // the next poster may peek in at the edge, like Plex
             const Plex::Item& it = hub.items[c];
             bool focused = !m_sidebarFocus && r == s.row && c == s.col;
@@ -1125,7 +1126,7 @@ void Browser::RenderDetails( Screen& s )
         for( size_t i = 0; i < s.children.size(); ++i )
         {
             float x = tx + i * 130.0f - ( s.button > 5 ? ( s.button - 5 ) * 130.0f : 0 );
-            if( x < tx - 10 || x > 1250 )
+            if( x < tx - 10 || x > ScreenWidth() - 30 )
                 continue;
             Poster( s.children[i], x, 460, 110, 165, (int)i == s.button );
             Text( m_font, x, 632, (int)i == s.button ? C_TEXT : C_DIM, s.children[i].title, 0.75f, 0, 115 );

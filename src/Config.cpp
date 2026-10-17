@@ -46,6 +46,7 @@ void Config::Load( const char* path )
     serverName = v["servername"];
     autoplay = v["autoplay"];
     logTo = v["logto"];
+    updateFrom = v["updatefrom"];
     testSeek = atoi( v["testseek"].c_str() );
     testOsd = v["testosd"] == "1";
     testNav = v["testnav"];

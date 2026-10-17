@@ -4,6 +4,7 @@
 #include <math.h>
 #include "Font.h"
 #include "Log.h"
+#include "App.h"
 
 namespace
 {
@@ -70,11 +71,13 @@ void Font::Startup( IDirect3DDevice9* device )
     // A 4:3 TV shows the 1280x720 picture squeezed sideways; draw letters narrower so they look normal.
     XVIDEO_MODE video;
     XGetVideoMode( &video );
-    g_squeeze = video.fIsWideScreen ? 1.0f : 0.75f;
+    g_squeeze = 1.0f;                       // the layout itself is 4:3-shaped there (ScreenWidth)
+    Log::Write( "Video mode: %ux%u, %s, %s", video.dwDisplayWidth, video.dwDisplayHeight,
+                video.fIsWideScreen ? "widescreen" : "normal (4:3)", video.fIsHiDef ? "HD" : "SD" );
     D3DDISPLAYMODE mode;
     if( SUCCEEDED( device->GetDisplayMode( 0, &mode ) ) && mode.Width > 0 )
     {
-        g_screenW = (float)mode.Width;
+        g_screenW = (float)ScreenWidth();
         g_screenH = (float)mode.Height;
     }
     ID3DXBuffer* code = NULL;

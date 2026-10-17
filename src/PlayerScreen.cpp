@@ -1,3 +1,4 @@
+#include "App.h"
 #include "PlayerScreen.h"
 #include <math.h>
 #include <stdio.h>
@@ -269,7 +270,7 @@ void PlayerScreen::Render( const D3DRECT& safe, float renderMs )
         Draw::Rect( cx - nw / 2 - 24, top, cx + nw / 2 + 24, top + nh + 20, 0xC0000000 );
         D3DRECT window;
         m_titleFont->GetWindow( window );
-        m_titleFont->SetWindow( 0, 0, 1280, 720 );
+        m_titleFont->SetWindow( 0, 0, ScreenWidth(), 720 );
         m_titleFont->Begin();
         m_titleFont->DrawText( cx, top + 10, COLOR_TEXT, m_notice.c_str(), FONT_CENTER_X );
         m_titleFont->End();
@@ -283,7 +284,7 @@ void PlayerScreen::Render( const D3DRECT& safe, float renderMs )
     if( !visible )
         return;
 
-    const float sw = 1280, sh = 720;
+    const float sw = (float)ScreenWidth(), sh = 720;
     float left = (float)safe.x1, right = (float)safe.x2, width = right - left;
     float barY = (float)safe.y2 - 58.0f;
 
@@ -407,7 +408,7 @@ void PlayerScreen::RenderMenu()
     MenuPage page;
     m_host->BuildMenu( m_menuPage, page );
 
-    const float x0 = 690, x1 = 1230, y0 = 70, rowH = 50;
+    const float x1 = ScreenWidth() - 50.0f, x0 = x1 - 540, y0 = 70, rowH = 50;
     const int maxRows = 8;
     int count = (int)page.entries.size();
     int first = 0;
@@ -422,7 +423,7 @@ void PlayerScreen::RenderMenu()
     Draw::Rect( x0, y0, x1, y1, 0xEE141414 );
     Draw::Rect( x0, y0 + 66, x1, y0 + 67, 0x40FFFFFF );
 
-    D3DRECT full = { 0, 0, 1280, 720 };
+    D3DRECT full = { 0, 0, ScreenWidth(), 720 };
     m_titleFont->SetWindow( full );
     m_font->SetWindow( full );
     m_titleFont->Begin();
@@ -526,7 +527,7 @@ void PlayerScreen::RenderStats( float renderMs )
     swprintf_s( lines[8], L"Mode      %s", m_host->StatsMode().c_str() );
 
     Draw::Rect( 30, 30, 840, 30 + 22 + 9 * 24, 0xC0000000 );
-    D3DRECT full = { 0, 0, 1280, 720 };
+    D3DRECT full = { 0, 0, ScreenWidth(), 720 };
     m_font->SetWindow( full );
     m_font->Begin();
     m_font->SetScaleFactors( 0.85f, 0.85f );

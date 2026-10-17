@@ -118,6 +118,7 @@
     </ClCompile>
     <ClCompile Include="src\PlexTv.cpp" />
     <ClCompile Include="src\Tls.cpp" />
+    <ClCompile Include="src\Updater.cpp" />
     <ClCompile Include="src\Xml.cpp" />
   </ItemGroup>
   <ItemGroup>

@@ -13,6 +13,9 @@ many pixels at once instead of one by one.
 - H.264 up to 720p plays directly on the console (FFmpeg with VMX128 code); anything else
   is converted by your Plex server
 - Audio and subtitle tracks, quality presets, resume and watched state
+- Fills 4:3 TVs too (set the console to 4:3 / normal)
+- Updates itself: when a new release is out it asks, shows what's new, and installs it (your
+  settings and sign-in stay)
 
 ## Install
 
@@ -26,6 +29,9 @@ many pixels at once instead of one by one.
 Works with DashLaunch liveblock on: no Xbox Live or stealth server needed.
 
 The app only writes inside its own folder. To sign out, use Settings or delete `auth.ini`.
+
+Updating: from 0.4 on the app finds new releases by itself and asks before installing (the
+previous version stays as `default.old`).
 
 ## Controls
 

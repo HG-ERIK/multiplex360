@@ -4,6 +4,7 @@
 #include <xtl.h>
 #include <winsockx.h>
 #include "App.h"
+#include "Updater.h"
 #include "Font.h"
 #include <stdio.h>
 #include <math.h>
@@ -233,7 +234,7 @@ HRESULT PlexApp::Initialize()
     InitializeCriticalSection( &m_lock );
 
     m_notify = XNotifyCreateListener( XNOTIFY_SYSTEM );
-    Draw::Startup( m_pd3dDevice, m_d3dpp.BackBufferWidth, m_d3dpp.BackBufferHeight );
+    Draw::Startup( m_pd3dDevice, ScreenWidth(), m_d3dpp.BackBufferHeight );
     Font::Startup( m_pd3dDevice );
     if( FAILED( m_font.Create( "game:\\Media\\Fonts\\Text_16.fnt" ) ) ||
         FAILED( m_titleFont.Create( "game:\\Media\\Fonts\\Text_22.fnt" ) ) )
@@ -493,7 +494,10 @@ DWORD WINAPI PlexApp::JobThread( LPVOID param )
             std::string err;
             if( !app->m_client )
             {
-                if( Http::Startup( err, app->m_localIp ) && !app->m_cfg.logTo.empty() )
+                bool netUp = Http::Startup( err, app->m_localIp );
+                if( netUp )
+                    Updater::Start( app->m_cfg.updateFrom );   // a newer version on GitHub? (in the background)
+                if( netUp && !app->m_cfg.logTo.empty() )
                 {
                     std::string to = app->m_cfg.logTo;
                     size_t colon = to.find( ':' );
@@ -613,6 +617,11 @@ HRESULT PlexApp::Update()
     if( GetTickCount() < s_holdUntil )
         pad->wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
     WORD pressed = pad->wPressedButtons;
+    if( Updater::Active() && !m_player.IsActive() && !m_restarting )
+    {
+        Updater::Input( pressed );          // the update question / download has the controller
+        return S_OK;
+    }
 
     if( m_player.IsActive() || m_restarting )
     {
@@ -702,11 +711,12 @@ HRESULT PlexApp::Render()
         m_browser.Render();
         if( m_busy )
         {
-            Draw::Rect( 0, 0, 1280, 720, 0x90000000 );
+            Draw::Rect( 0, 0, (float)ScreenWidth(), 720, 0x90000000 );
             m_titleFont.Begin();
             m_titleFont.DrawText( (float)( safe.x2 - safe.x1 ) / 2, 320, COLOR_TEXT, Status().c_str(), FONT_CENTER_X );
             m_titleFont.End();
         }
+        Updater::Render( m_font, m_titleFont, (float)( safe.x2 - safe.x1 ) );
         EndFrame();
         return S_OK;
     }
@@ -738,6 +748,7 @@ HRESULT PlexApp::Render()
                          FONT_RIGHT );
     m_font.End();
 
+    Updater::Render( m_font, m_titleFont, width );
     EndFrame();
     return S_OK;
 }
