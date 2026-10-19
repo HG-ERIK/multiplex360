@@ -1,6 +1,6 @@
 # Multiplex 360
 
-An unofficial Plex client for RGH/JTAG Xbox 360 consoles.
+An unofficial Plex client for RGH / JTAG / BADUPDATE Xbox 360 consoles.
 
 Multiplex 360 uses its own way of multithreading on the Xbox 360's CPU, which makes video
 playback a lot more efficient. It also uses VMX, the CPU's built-in vector unit, which can work on
